@@ -9,7 +9,7 @@
 #   generate-hashes: false
 #   universal: false
 
--e file:.
+-e file:rosbag_deck_python
 black==25.1.0
 cffi==1.17.1
     # via rosbag-deck
