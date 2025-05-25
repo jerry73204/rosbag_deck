@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>rosbag_deck_core</name>
+  <version>0.1.0</version>
+  <description>Pure C++ library for interactive bag playback with streaming architecture</description>
+  <maintainer email="lctk@ntu.edu.tw">NEWSLAB NTU</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

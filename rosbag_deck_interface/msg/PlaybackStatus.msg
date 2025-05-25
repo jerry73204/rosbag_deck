@@ -1,0 +1,7 @@
+# Playback status information
+builtin_interfaces/Time stamp
+bool is_playing
+uint64 current_frame
+builtin_interfaces/Time current_time
+builtin_interfaces/Time virtual_time
+uint64 timeline_segment

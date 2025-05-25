@@ -1,0 +1,10 @@
+# Request bag information
+---
+# Response with bag metadata
+bool success
+string message
+builtin_interfaces/Time start_time
+builtin_interfaces/Time end_time
+builtin_interfaces/Duration total_duration
+uint64 total_frames
+string[] topic_names

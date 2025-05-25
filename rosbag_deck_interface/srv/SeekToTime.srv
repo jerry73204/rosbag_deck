@@ -1,0 +1,8 @@
+# Seek to specific timestamp
+builtin_interfaces/Time target_time
+---
+# Response
+bool success
+string message
+uint64 actual_frame
+builtin_interfaces/Time actual_time
