@@ -4,3 +4,8 @@
 *.swp
 *.swo
 \#*#
+
+# colcon
+/build/
+/install/
+/log/
