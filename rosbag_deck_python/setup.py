@@ -71,6 +71,14 @@ setup(
         "build_py": BuildWithCFFI,
         "develop": DevelopWithCFFI,
     },
+    zip_safe=True,
+    package_data={
+        "": ["package.xml"],
+    },
+    data_files=[
+        ("share/ament_index/resource_index/packages", ["resource/rosbag_deck_python"]),
+        ("share/rosbag_deck_python", ["package.xml"]),
+    ],
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Developers",

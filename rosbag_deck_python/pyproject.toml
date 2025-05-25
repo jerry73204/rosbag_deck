@@ -27,4 +27,15 @@ classifiers = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["rosbag_deck*"]
+include = ["rosbag_deck"]
+
+[tool.rye]
+managed = true
+dev-dependencies = [
+    "pytest>=6.0.0",
+    "black>=22.0.0",
+    "mypy>=0.900",
+]
+
+[tool.setuptools]
+include-package-data = true
