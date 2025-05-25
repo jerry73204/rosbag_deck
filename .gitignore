@@ -9,3 +9,8 @@
 /build/
 /install/
 /log/
+
+# python
+.eggs/
+__pycache__/
+*.egg-info/
