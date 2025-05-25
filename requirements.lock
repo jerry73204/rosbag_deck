@@ -10,7 +10,35 @@
 #   universal: false
 
 -e file:rosbag_deck_python
+    # via rosbag-deck-tui
+-e file:rosbag_deck_tui
 cffi==1.17.1
     # via rosbag-deck
+linkify-it-py==2.0.3
+    # via markdown-it-py
+markdown-it-py==3.0.0
+    # via mdit-py-plugins
+    # via rich
+    # via textual
+mdit-py-plugins==0.4.2
+    # via markdown-it-py
+mdurl==0.1.2
+    # via markdown-it-py
+numpy==1.24.4
+    # via rosbag-deck-tui
+platformdirs==4.3.8
+    # via textual
 pycparser==2.22
     # via cffi
+pygments==2.19.1
+    # via rich
+rich==14.0.0
+    # via rosbag-deck-tui
+    # via textual
+textual==3.2.0
+    # via rosbag-deck-tui
+typing-extensions==4.13.2
+    # via rich
+    # via textual
+uc-micro-py==1.0.3
+    # via linkify-it-py

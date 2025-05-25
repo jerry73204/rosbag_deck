@@ -17,4 +17,5 @@ dev-dependencies = []
 [tool.rye.workspace]
 members = [
   "rosbag_deck_python",
+  "rosbag_deck_tui",
 ]
