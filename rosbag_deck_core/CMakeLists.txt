@@ -11,6 +11,7 @@ find_package(ament_cmake REQUIRED)
 # Add library
 add_library(rosbag_deck_core SHARED
   src/rosbag_deck_core.cpp
+  src/rosbag_deck_c.cpp
 )
 
 target_include_directories(rosbag_deck_core PUBLIC
