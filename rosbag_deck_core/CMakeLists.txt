@@ -7,6 +7,9 @@ endif()
 
 # find dependencies
 find_package(ament_cmake REQUIRED)
+find_package(rosbag2_cpp REQUIRED)
+find_package(rosbag2_storage REQUIRED)
+find_package(rclcpp REQUIRED)
 
 # Add library
 add_library(rosbag_deck_core SHARED
@@ -19,6 +22,13 @@ target_include_directories(rosbag_deck_core PUBLIC
   $<INSTALL_INTERFACE:include>)
 
 target_compile_features(rosbag_deck_core PUBLIC cxx_std_17)
+
+# Link rosbag2 libraries
+ament_target_dependencies(rosbag_deck_core
+  rosbag2_cpp
+  rosbag2_storage
+  rclcpp
+)
 
 # Install library
 install(TARGETS rosbag_deck_core
@@ -64,6 +74,6 @@ if(BUILD_TESTING)
 endif()
 
 ament_export_targets(rosbag_deck_core_targets HAS_LIBRARY_TARGET)
-ament_export_dependencies()
+ament_export_dependencies(rosbag2_cpp rosbag2_storage rclcpp)
 
 ament_package()

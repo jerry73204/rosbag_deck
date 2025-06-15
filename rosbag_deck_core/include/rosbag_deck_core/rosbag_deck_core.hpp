@@ -10,14 +10,21 @@
 #include <memory>
 #include <mutex>
 #include <queue>
+#include <set>
 #include <string>
 #include <thread>
 #include <unordered_map>
 #include <vector>
 
+#include <rclcpp/rclcpp.hpp>
+#include <rclcpp/serialization.hpp>
+#include <rosbag2_cpp/reader.hpp>
+#include <rosbag2_storage/storage_options.hpp>
+
 namespace rosbag_deck_core {
 
-using Timestamp = std::chrono::time_point<std::chrono::high_resolution_clock>;
+using Timestamp = std::chrono::time_point<std::chrono::steady_clock,
+                                          std::chrono::nanoseconds>;
 using Duration = std::chrono::nanoseconds;
 
 // Forward declarations
@@ -32,14 +39,20 @@ struct BagMessage {
   std::string message_type;
   std::shared_ptr<std::vector<uint8_t>> serialized_data;
   size_t frame_index;
+
+  // Additional rosbag2 metadata
+  std::string serialization_format;
+  std::map<std::string, std::string> metadata;
 };
 
 struct IndexEntry {
   size_t frame_index;
   Timestamp timestamp;
   std::string topic_name;
+  std::string message_type;
   size_t bag_file_index;
   size_t offset_in_bag;
+  std::string serialization_format;
 };
 
 struct CacheEntry {
@@ -91,6 +104,9 @@ public:
   Timestamp end_time() const { return end_time_; }
   const std::vector<std::string> &topic_names() const { return topic_names_; }
   const std::vector<std::string> &bag_paths() const { return bag_paths_; }
+  const std::map<std::string, std::string> &topic_types() const {
+    return topic_types_;
+  }
 
 private:
   std::vector<IndexEntry> index_;
@@ -98,6 +114,7 @@ private:
   Timestamp end_time_;
   std::vector<std::string> topic_names_;
   std::vector<std::string> bag_paths_;
+  std::map<std::string, std::string> topic_types_; // topic_name -> message_type
 };
 
 class MessageCache {
@@ -131,11 +148,11 @@ private:
   void worker_thread();
   void process_request(const CacheRequest &request);
   BagMessage load_message_at_frame(size_t frame_index);
+  void open_bag_readers();
 
   const IndexManager &index_manager_;
   std::shared_ptr<MessageCache> cache_;
-  // Placeholder for bag readers - using void* instead of unique_ptr<void>
-  std::vector<void *> readers_;
+  std::vector<std::unique_ptr<rosbag2_cpp::Reader>> readers_;
 
   std::thread worker_thread_;
   std::queue<CacheRequest> request_queue_;
@@ -175,6 +192,17 @@ public:
   // Utility functions
   static Timestamp to_timestamp(int64_t nanoseconds_since_epoch);
   static int64_t from_timestamp(const Timestamp &timestamp);
+
+  // Message serialization/deserialization utilities
+  template <typename MessageT>
+  static std::shared_ptr<std::vector<uint8_t>>
+  serialize_message(const MessageT &message);
+
+  template <typename MessageT>
+  static MessageT
+  deserialize_message(const std::vector<uint8_t> &serialized_data);
+
+  static bool is_message_type_supported(const std::string &message_type);
 
 private:
   // Core functionality
