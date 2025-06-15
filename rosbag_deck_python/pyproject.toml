@@ -33,8 +33,48 @@ include = ["rosbag_deck"]
 managed = true
 dev-dependencies = [
     "pytest>=6.0.0",
+    "pytest-cov>=3.0.0",
+    "pytest-mock>=3.7.0",
+    "memory-profiler>=0.60.0",
     "black>=22.0.0",
     "mypy>=0.900",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "--cov=rosbag_deck",
+    "--cov-report=term-missing",
+    "--cov-report=html:htmlcov",
+    "--cov-fail-under=85",
+]
+markers = [
+    "unit: Unit tests that run quickly and don't require external resources",
+    "integration: Integration tests that may require real bag files",
+    "performance: Performance tests that measure timing and memory",
+    "slow: Tests that take a long time to run",
+]
+
+[tool.coverage.run]
+source = ["rosbag_deck"]
+omit = [
+    "*/tests/*",
+    "*/__pycache__/*",
+    "*/.*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
 ]
 
 [tool.setuptools]
