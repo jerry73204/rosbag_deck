@@ -68,6 +68,18 @@ install(FILES
   DESTINATION lib/cmake/${PROJECT_NAME}
 )
 
+# Add example executable
+add_executable(dynamic_types_example examples/dynamic_types_example.cpp)
+target_link_libraries(dynamic_types_example rosbag_deck_core)
+ament_target_dependencies(dynamic_types_example
+  rosbag2_cpp
+  rosbag2_storage
+  rclcpp
+)
+install(TARGETS dynamic_types_example
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   ament_lint_auto_find_test_dependencies()

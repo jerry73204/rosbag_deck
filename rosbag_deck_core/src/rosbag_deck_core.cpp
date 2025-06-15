@@ -52,15 +52,10 @@ MessageT RosbagDeckCore::deserialize_message(
 
 bool RosbagDeckCore::is_message_type_supported(
     const std::string &message_type) {
-  // Basic support for common ROS 2 message types
-  static const std::set<std::string> supported_types = {
-      "sensor_msgs/msg/PointCloud2", "sensor_msgs/msg/Image",
-      "sensor_msgs/msg/LaserScan",   "sensor_msgs/msg/Imu",
-      "geometry_msgs/msg/Twist",     "geometry_msgs/msg/PoseStamped",
-      "nav_msgs/msg/Odometry",       "std_msgs/msg/String",
-      "std_msgs/msg/Header"};
-
-  return supported_types.find(message_type) != supported_types.end();
+  // With rosbag2 integration, we support all message types dynamically
+  // The type registry will determine which types can be deserialized
+  (void)message_type; // Suppress unused parameter warning
+  return true;
 }
 
 // IndexManager implementation
@@ -430,6 +425,7 @@ RosbagDeckCore::RosbagDeckCore()
 
   index_manager_ = std::make_unique<IndexManager>();
   message_cache_ = std::make_shared<MessageCache>(cache_size_);
+  type_registry_ = std::make_unique<MessageTypeRegistry>();
 }
 
 RosbagDeckCore::~RosbagDeckCore() {
@@ -457,8 +453,36 @@ void RosbagDeckCore::set_playback_rate(double rate) { playback_rate_ = rate; }
 
 void RosbagDeckCore::set_loop_playback(bool loop) { loop_playback_ = loop; }
 
+void RosbagDeckCore::set_topic_filter(const std::vector<std::string> &topics) {
+  type_registry_->set_topic_filter(topics);
+}
+
+void RosbagDeckCore::clear_topic_filter() {
+  type_registry_->clear_topic_filter();
+}
+
+void RosbagDeckCore::set_type_filter(const std::vector<std::string> &types) {
+  type_registry_->set_type_filter(types);
+}
+
+void RosbagDeckCore::clear_type_filter() {
+  type_registry_->clear_type_filter();
+}
+
+std::vector<std::string> RosbagDeckCore::get_available_topics() const {
+  return index_manager_ ? index_manager_->topic_names()
+                        : std::vector<std::string>();
+}
+
+std::vector<std::string> RosbagDeckCore::get_available_types() const {
+  return type_registry_->get_registered_types();
+}
+
 bool RosbagDeckCore::build_index(const std::vector<std::string> &bag_paths) {
   try {
+    // Register all message types from the bags
+    type_registry_->register_types_from_bag_metadata(bag_paths);
+
     index_manager_->build_index(bag_paths);
 
     bag_worker_ = std::make_unique<BagWorker>(*index_manager_);
@@ -641,6 +665,19 @@ bool RosbagDeckCore::cached_publish_frame(size_t frame_index) {
     return false;
   }
 
+  // Get the index entry to check topic and type filters
+  const auto &entry = index_manager_->get_entry(frame_index);
+
+  // Skip if topic is filtered out
+  if (!type_registry_->is_topic_enabled(entry.topic_name)) {
+    return true; // Return true to continue playback, just skip this message
+  }
+
+  // Skip if message type is filtered out
+  if (!type_registry_->is_type_enabled(entry.message_type)) {
+    return true; // Return true to continue playback, just skip this message
+  }
+
   BagMessage message;
   if (!message_cache_->get_message(frame_index, message)) {
     auto future = bag_worker_->request_range(frame_index, frame_index);
@@ -713,6 +750,110 @@ void RosbagDeckCore::trigger_preload_if_needed() {
     size_t preload_end = std::min(current + preload_ahead_, total - 1);
     bag_worker_->request_range(preload_start, preload_end);
   }
+}
+
+// MessageTypeRegistry implementation
+MessageTypeRegistry::MessageTypeRegistry()
+    : topic_filter_active_(false), type_filter_active_(false) {}
+
+void MessageTypeRegistry::register_types_from_bag_metadata(
+    const std::vector<std::string> &bag_paths) {
+  std::lock_guard<std::mutex> lock(registry_mutex_);
+
+  for (const auto &bag_path : bag_paths) {
+    try {
+      rosbag2_cpp::Reader reader;
+      rosbag2_storage::StorageOptions storage_options;
+      storage_options.uri = bag_path;
+      reader.open(storage_options);
+
+      auto metadata = reader.get_metadata();
+
+      for (const auto &topic_metadata : metadata.topics_with_message_count) {
+        type_registry_[topic_metadata.topic_metadata.type] =
+            topic_metadata.topic_metadata.type; // TODO: Get actual type hash
+      }
+
+      reader.close();
+    } catch (const std::exception &e) {
+      std::cerr << "Error reading metadata from " << bag_path << ": "
+                << e.what() << std::endl;
+    }
+  }
+}
+
+bool MessageTypeRegistry::is_type_registered(
+    const std::string &message_type) const {
+  std::lock_guard<std::mutex> lock(registry_mutex_);
+  return type_registry_.find(message_type) != type_registry_.end();
+}
+
+std::vector<std::string> MessageTypeRegistry::get_registered_types() const {
+  std::lock_guard<std::mutex> lock(registry_mutex_);
+  std::vector<std::string> types;
+  for (const auto &[type, hash] : type_registry_) {
+    types.push_back(type);
+  }
+  return types;
+}
+
+bool MessageTypeRegistry::can_deserialize(
+    const std::string &message_type) const {
+  // For now, we support all registered types
+  return is_type_registered(message_type);
+}
+
+std::string
+MessageTypeRegistry::get_type_hash(const std::string &message_type) const {
+  std::lock_guard<std::mutex> lock(registry_mutex_);
+  auto it = type_registry_.find(message_type);
+  return (it != type_registry_.end()) ? it->second : "";
+}
+
+void MessageTypeRegistry::set_topic_filter(
+    const std::vector<std::string> &topics) {
+  std::lock_guard<std::mutex> lock(registry_mutex_);
+  enabled_topics_.clear();
+  enabled_topics_.insert(topics.begin(), topics.end());
+  topic_filter_active_ = !topics.empty();
+}
+
+void MessageTypeRegistry::clear_topic_filter() {
+  std::lock_guard<std::mutex> lock(registry_mutex_);
+  enabled_topics_.clear();
+  topic_filter_active_ = false;
+}
+
+bool MessageTypeRegistry::is_topic_enabled(
+    const std::string &topic_name) const {
+  std::lock_guard<std::mutex> lock(registry_mutex_);
+  if (!topic_filter_active_) {
+    return true; // All topics enabled if no filter
+  }
+  return enabled_topics_.find(topic_name) != enabled_topics_.end();
+}
+
+void MessageTypeRegistry::set_type_filter(
+    const std::vector<std::string> &types) {
+  std::lock_guard<std::mutex> lock(registry_mutex_);
+  enabled_types_.clear();
+  enabled_types_.insert(types.begin(), types.end());
+  type_filter_active_ = !types.empty();
+}
+
+void MessageTypeRegistry::clear_type_filter() {
+  std::lock_guard<std::mutex> lock(registry_mutex_);
+  enabled_types_.clear();
+  type_filter_active_ = false;
+}
+
+bool MessageTypeRegistry::is_type_enabled(
+    const std::string &message_type) const {
+  std::lock_guard<std::mutex> lock(registry_mutex_);
+  if (!type_filter_active_) {
+    return true; // All types enabled if no filter
+  }
+  return enabled_types_.find(message_type) != enabled_types_.end();
 }
 
 } // namespace rosbag_deck_core

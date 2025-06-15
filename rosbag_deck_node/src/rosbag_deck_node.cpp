@@ -1,5 +1,7 @@
 #include "rosbag_deck_node/rosbag_deck_node.hpp"
 #include <rclcpp/serialization.hpp>
+#include <rcutils/allocator.h>
+#include <cstring>
 
 namespace rosbag_deck_node {
 
@@ -77,13 +79,18 @@ RosbagDeckNode::RosbagDeckNode(const rclcpp::NodeOptions &options)
                   "Successfully indexed %zu bags with %zu total frames",
                   bag_paths.size(), bag_info.total_frames);
 
-      // Create publishers for all topics
+      // Create generic publishers for all topics with their message types
+      // Get topic types from the index manager
+      const auto& index_topic_types = core_->get_index_manager().topic_types();
       for (const auto &topic_name : bag_info.topic_names) {
-        publishers_[topic_name] =
-            this->create_publisher<sensor_msgs::msg::PointCloud2>(topic_name,
-                                                                  10);
-        RCLCPP_INFO(this->get_logger(), "Created publisher for topic: %s",
-                    topic_name.c_str());
+        auto type_it = index_topic_types.find(topic_name);
+        if (type_it != index_topic_types.end()) {
+          publishers_[topic_name] = this->create_generic_publisher(
+              topic_name, type_it->second, rclcpp::SystemDefaultsQoS());
+          RCLCPP_INFO(this->get_logger(), 
+                      "Created publisher for topic: %s [type: %s]",
+                      topic_name.c_str(), type_it->second.c_str());
+        }
       }
     } else {
       RCLCPP_ERROR(this->get_logger(), "Failed to build index");
@@ -203,22 +210,31 @@ void RosbagDeckNode::on_message_update(
     const rosbag_deck_core::BagMessage &message) {
   auto it = publishers_.find(message.topic_name);
   if (it != publishers_.end() && message.serialized_data) {
-    // Create a dummy point cloud message for now
-    // In a real implementation, you'd deserialize the actual message data
-    auto cloud_msg = sensor_msgs::msg::PointCloud2();
-    cloud_msg.header.stamp = core_to_ros_time(message.virtual_timestamp);
-    cloud_msg.header.frame_id =
-        message.topic_name + "_seg_" + std::to_string(message.frame_index);
-
-    // Set dummy point cloud data
-    cloud_msg.width = 100;
-    cloud_msg.height = 1;
-    cloud_msg.is_bigendian = false;
-    cloud_msg.point_step = 16; // 4 floats * 4 bytes
-    cloud_msg.row_step = cloud_msg.point_step * cloud_msg.width;
-    cloud_msg.data.resize(cloud_msg.row_step * cloud_msg.height);
-
-    it->second->publish(cloud_msg);
+    // Publish the raw serialized message using generic publisher
+    rclcpp::SerializedMessage serialized_msg;
+    serialized_msg.reserve(message.serialized_data->size());
+    
+    // Copy the serialized data
+    auto& rcl_msg = serialized_msg.get_rcl_serialized_message();
+    rcl_msg.buffer_length = message.serialized_data->size();
+    rcl_msg.buffer_capacity = message.serialized_data->size();
+    rcl_msg.buffer = reinterpret_cast<uint8_t*>(
+        rcutils_get_default_allocator().allocate(
+            rcl_msg.buffer_length, rcutils_get_default_allocator().state));
+    
+    if (rcl_msg.buffer != nullptr) {
+      std::memcpy(rcl_msg.buffer, message.serialized_data->data(), 
+                  message.serialized_data->size());
+      
+      // Update timestamp in the serialized message if possible
+      // Note: This is a simplified approach. In a real implementation,
+      // you might need to deserialize, update header, and re-serialize
+      
+      it->second->publish(serialized_msg);
+    } else {
+      RCLCPP_ERROR(this->get_logger(), 
+                   "Failed to allocate memory for serialized message");
+    }
   }
 }
 

@@ -14,6 +14,8 @@ find_package(std_srvs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(builtin_interfaces REQUIRED)
 find_package(rosbag_deck_interface REQUIRED)
+find_package(rosbag2_cpp REQUIRED)
+find_package(rosbag2_storage REQUIRED)
 find_package(rosbag_deck_core REQUIRED)
 
 # Add executable
@@ -36,6 +38,8 @@ ament_target_dependencies(rosbag_deck_node
   geometry_msgs
   builtin_interfaces
   rosbag_deck_interface
+  rosbag2_cpp
+  rosbag2_storage
 )
 
 target_link_libraries(rosbag_deck_node

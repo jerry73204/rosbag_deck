@@ -6,6 +6,7 @@
 #include "rosbag_deck_interface/srv/seek_to_time.hpp"
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp/generic_publisher.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <std_msgs/msg/header.hpp>
 #include <std_srvs/srv/set_bool.hpp>
@@ -61,9 +62,8 @@ private:
   // Core library instance
   std::unique_ptr<rosbag_deck_core::RosbagDeckCore> core_;
 
-  // ROS publishers
-  std::unordered_map<
-      std::string, rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr>
+  // ROS publishers - using generic publishers for dynamic message types
+  std::unordered_map<std::string, rclcpp::GenericPublisher::SharedPtr>
       publishers_;
   rclcpp::Publisher<rosbag_deck_interface::msg::PlaybackStatus>::SharedPtr
       status_publisher_;

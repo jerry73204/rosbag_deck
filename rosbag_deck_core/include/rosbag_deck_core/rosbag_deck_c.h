@@ -68,6 +68,19 @@ void rosbag_deck_set_preload_settings(rosbag_deck_handle_t handle, size_t ahead,
 void rosbag_deck_set_playback_rate(rosbag_deck_handle_t handle, double rate);
 void rosbag_deck_set_loop_playback(rosbag_deck_handle_t handle, bool loop);
 
+// Topic and type filtering
+void rosbag_deck_set_topic_filter(rosbag_deck_handle_t handle,
+                                  const char **topics, size_t topics_count);
+void rosbag_deck_clear_topic_filter(rosbag_deck_handle_t handle);
+void rosbag_deck_set_type_filter(rosbag_deck_handle_t handle,
+                                 const char **types, size_t types_count);
+void rosbag_deck_clear_type_filter(rosbag_deck_handle_t handle);
+char **rosbag_deck_get_available_topics(rosbag_deck_handle_t handle,
+                                        size_t *count);
+char **rosbag_deck_get_available_types(rosbag_deck_handle_t handle,
+                                       size_t *count);
+void rosbag_deck_free_string_array(char **array, size_t count);
+
 // Core operations
 bool rosbag_deck_build_index(rosbag_deck_handle_t handle,
                              const char **bag_paths, size_t bag_paths_count);
