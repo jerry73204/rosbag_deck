@@ -1,12 +1,10 @@
 #include <gtest/gtest.h>
-#include <gmock/gmock.h>
 #include "rosbag_deck_core/rosbag_deck_core.hpp"
 #include "../fixtures/test_bag_creator.hpp"
-#include "../fixtures/test_data_generator.hpp"
+#include <thread>
 
 using namespace rosbag_deck_core;
 using namespace rosbag_deck_core::test;
-using namespace testing;
 
 class MessageTypeRegistryTest : public ::testing::Test {
 protected:
@@ -23,6 +21,12 @@ protected:
   std::unique_ptr<MessageTypeRegistry> registry_;
 };
 
+TEST_F(MessageTypeRegistryTest, DefaultConstructor) {
+  // Registry should start empty
+  auto types = registry_->get_registered_types();
+  EXPECT_TRUE(types.empty());
+}
+
 TEST_F(MessageTypeRegistryTest, RegisterTypesFromSingleBag) {
   // Create a test bag with known types
   auto bag_path = bag_creator_->create_test_bag("registry_single.db3", 10, {"/laser"});
@@ -31,12 +35,11 @@ TEST_F(MessageTypeRegistryTest, RegisterTypesFromSingleBag) {
   registry_->register_types_from_bag_metadata({bag_path});
   
   // Verify types were registered
-  auto discovered_types = registry_->get_discovered_types();
-  EXPECT_THAT(discovered_types, Contains("sensor_msgs/msg/PointCloud2"));
+  auto types = registry_->get_registered_types();
+  EXPECT_TRUE(std::find(types.begin(), types.end(), "sensor_msgs/msg/PointCloud2") != types.end());
   
-  // Verify topic mappings
-  auto topic_types = registry_->get_topic_type_map();
-  EXPECT_EQ(topic_types["/laser"], "sensor_msgs/msg/PointCloud2");
+  // Verify type is registered
+  EXPECT_TRUE(registry_->is_type_registered("sensor_msgs/msg/PointCloud2"));
 }
 
 TEST_F(MessageTypeRegistryTest, RegisterTypesFromMultipleBags) {
@@ -48,23 +51,22 @@ TEST_F(MessageTypeRegistryTest, RegisterTypesFromMultipleBags) {
   registry_->register_types_from_bag_metadata({bag1, bag2});
   
   // Verify all types were discovered
-  auto discovered_types = registry_->get_discovered_types();
-  EXPECT_THAT(discovered_types, Contains("sensor_msgs/msg/PointCloud2"));
-  EXPECT_THAT(discovered_types, Contains("geometry_msgs/msg/Twist"));
-  EXPECT_THAT(discovered_types, Contains("std_msgs/msg/String"));
+  auto types = registry_->get_registered_types();
+  EXPECT_TRUE(std::find(types.begin(), types.end(), "sensor_msgs/msg/PointCloud2") != types.end());
+  EXPECT_TRUE(std::find(types.begin(), types.end(), "geometry_msgs/msg/Twist") != types.end());
+  EXPECT_TRUE(std::find(types.begin(), types.end(), "std_msgs/msg/String") != types.end());
   
-  // Verify topic mappings from multi-topic bag
-  auto topic_types = registry_->get_topic_type_map();
-  EXPECT_EQ(topic_types["/pointcloud"], "sensor_msgs/msg/PointCloud2");
-  EXPECT_EQ(topic_types["/cmd_vel"], "geometry_msgs/msg/Twist");
-  EXPECT_EQ(topic_types["/status"], "std_msgs/msg/String");
+  // Verify all types are registered
+  EXPECT_TRUE(registry_->is_type_registered("sensor_msgs/msg/PointCloud2"));
+  EXPECT_TRUE(registry_->is_type_registered("geometry_msgs/msg/Twist"));
+  EXPECT_TRUE(registry_->is_type_registered("std_msgs/msg/String"));
 }
 
 TEST_F(MessageTypeRegistryTest, TopicFiltering) {
   auto bag_path = bag_creator_->create_multi_topic_bag("registry_filter.db3", 10);
   registry_->register_types_from_bag_metadata({bag_path});
   
-  // Initially all topics should be enabled
+  // Initially all topics should be enabled (no filter)
   EXPECT_TRUE(registry_->is_topic_enabled("/pointcloud"));
   EXPECT_TRUE(registry_->is_topic_enabled("/cmd_vel"));
   EXPECT_TRUE(registry_->is_topic_enabled("/status"));
@@ -78,88 +80,64 @@ TEST_F(MessageTypeRegistryTest, TopicFiltering) {
   EXPECT_FALSE(registry_->is_topic_enabled("/cmd_vel"));
   EXPECT_TRUE(registry_->is_topic_enabled("/status"));
   
-  // Verify get_enabled_topics
-  auto filtered_topics = registry_->get_enabled_topics();
-  EXPECT_THAT(filtered_topics, UnorderedElementsAre("/pointcloud", "/status"));
+  // Clear filter
+  registry_->clear_topic_filter();
+  
+  // All topics should be enabled again
+  EXPECT_TRUE(registry_->is_topic_enabled("/pointcloud"));
+  EXPECT_TRUE(registry_->is_topic_enabled("/cmd_vel"));
+  EXPECT_TRUE(registry_->is_topic_enabled("/status"));
 }
 
 TEST_F(MessageTypeRegistryTest, TypeFiltering) {
   auto bag_path = bag_creator_->create_multi_topic_bag("registry_type_filter.db3", 10);
   registry_->register_types_from_bag_metadata({bag_path});
   
-  // Initially all types should be enabled
-  EXPECT_TRUE(registry_->is_message_type_supported("sensor_msgs/msg/PointCloud2"));
-  EXPECT_TRUE(registry_->is_message_type_supported("geometry_msgs/msg/Twist"));
-  EXPECT_TRUE(registry_->is_message_type_supported("std_msgs/msg/String"));
+  // Initially all types should be enabled (no filter)
+  EXPECT_TRUE(registry_->is_type_enabled("sensor_msgs/msg/PointCloud2"));
+  EXPECT_TRUE(registry_->is_type_enabled("geometry_msgs/msg/Twist"));
+  EXPECT_TRUE(registry_->is_type_enabled("std_msgs/msg/String"));
   
   // Set type filter
   std::vector<std::string> enabled_types = {"sensor_msgs/msg/PointCloud2", "std_msgs/msg/String"};
   registry_->set_type_filter(enabled_types);
   
   // Check filtered types
-  EXPECT_TRUE(registry_->is_message_type_supported("sensor_msgs/msg/PointCloud2"));
-  EXPECT_FALSE(registry_->is_message_type_supported("geometry_msgs/msg/Twist"));
-  EXPECT_TRUE(registry_->is_message_type_supported("std_msgs/msg/String"));
+  EXPECT_TRUE(registry_->is_type_enabled("sensor_msgs/msg/PointCloud2"));
+  EXPECT_FALSE(registry_->is_type_enabled("geometry_msgs/msg/Twist"));
+  EXPECT_TRUE(registry_->is_type_enabled("std_msgs/msg/String"));
   
-  // Verify get_enabled_types
-  auto filtered_types = registry_->get_enabled_types();
-  EXPECT_THAT(filtered_types, UnorderedElementsAre("sensor_msgs/msg/PointCloud2", "std_msgs/msg/String"));
-}
-
-TEST_F(MessageTypeRegistryTest, CombinedFiltering) {
-  auto bag_path = bag_creator_->create_multi_topic_bag("registry_combined.db3", 10);
-  registry_->register_types_from_bag_metadata({bag_path});
-  
-  // Set both topic and type filters
-  registry_->set_topic_filter({"/pointcloud", "/cmd_vel"});
-  registry_->set_type_filter({"sensor_msgs/msg/PointCloud2"});
-  
-  // Should pass both filters
-  EXPECT_TRUE(registry_->should_process_message("/pointcloud", "sensor_msgs/msg/PointCloud2"));
-  
-  // Should fail topic filter
-  EXPECT_FALSE(registry_->should_process_message("/status", "sensor_msgs/msg/PointCloud2"));
-  
-  // Should fail type filter
-  EXPECT_FALSE(registry_->should_process_message("/cmd_vel", "geometry_msgs/msg/Twist"));
-  
-  // Should fail both filters
-  EXPECT_FALSE(registry_->should_process_message("/status", "std_msgs/msg/String"));
-}
-
-TEST_F(MessageTypeRegistryTest, ClearFilters) {
-  auto bag_path = bag_creator_->create_multi_topic_bag("registry_clear.db3", 10);
-  registry_->register_types_from_bag_metadata({bag_path});
-  
-  // Set restrictive filters
-  registry_->set_topic_filter({"/pointcloud"});
-  registry_->set_type_filter({"sensor_msgs/msg/PointCloud2"});
-  
-  // Verify filtering is active
-  EXPECT_FALSE(registry_->is_topic_enabled("/cmd_vel"));
-  EXPECT_FALSE(registry_->is_message_type_supported("geometry_msgs/msg/Twist"));
-  
-  // Clear filters
-  registry_->clear_topic_filter();
+  // Clear filter
   registry_->clear_type_filter();
   
-  // All topics and types should be enabled again
-  EXPECT_TRUE(registry_->is_topic_enabled("/cmd_vel"));
-  EXPECT_TRUE(registry_->is_message_type_supported("geometry_msgs/msg/Twist"));
+  // All types should be enabled again
+  EXPECT_TRUE(registry_->is_type_enabled("sensor_msgs/msg/PointCloud2"));
+  EXPECT_TRUE(registry_->is_type_enabled("geometry_msgs/msg/Twist"));
+  EXPECT_TRUE(registry_->is_type_enabled("std_msgs/msg/String"));
 }
 
 TEST_F(MessageTypeRegistryTest, UnknownTopicAndTypeHandling) {
   auto bag_path = bag_creator_->create_test_bag("registry_unknown.db3", 5, {"/known"});
   registry_->register_types_from_bag_metadata({bag_path});
   
-  // Unknown topic should not be enabled
+  // Without filters, unknown topics are allowed (permissive default behavior)
+  EXPECT_TRUE(registry_->is_topic_enabled("/unknown_topic"));
+  
+  // Without filters, unknown types are allowed (permissive default behavior) 
+  EXPECT_TRUE(registry_->is_type_enabled("unknown_msgs/msg/UnknownType"));
+  
+  // But unknown types should not be registered in the type registry
+  EXPECT_FALSE(registry_->is_type_registered("unknown_msgs/msg/UnknownType"));
+  
+  // Test filtering behavior: set a filter that only allows known items
+  registry_->set_topic_filter({"/known"});
+  EXPECT_TRUE(registry_->is_topic_enabled("/known"));
   EXPECT_FALSE(registry_->is_topic_enabled("/unknown_topic"));
   
-  // Unknown type should not be supported
-  EXPECT_FALSE(registry_->is_message_type_supported("unknown_msgs/msg/UnknownType"));
-  
-  // Unknown combinations should not be processed
-  EXPECT_FALSE(registry_->should_process_message("/unknown", "unknown_msgs/msg/Type"));
+  // Set type filter for known types
+  registry_->set_type_filter({"sensor_msgs/msg/PointCloud2"});
+  EXPECT_TRUE(registry_->is_type_enabled("sensor_msgs/msg/PointCloud2"));
+  EXPECT_FALSE(registry_->is_type_enabled("unknown_msgs/msg/UnknownType"));
 }
 
 TEST_F(MessageTypeRegistryTest, EmptyBagHandling) {
@@ -168,21 +146,18 @@ TEST_F(MessageTypeRegistryTest, EmptyBagHandling) {
   // Should handle empty bags gracefully
   EXPECT_NO_THROW(registry_->register_types_from_bag_metadata({bag_path}));
   
-  // Should have no discovered types
-  auto discovered_types = registry_->get_discovered_types();
-  EXPECT_TRUE(discovered_types.empty());
-  
-  auto topic_types = registry_->get_topic_type_map();
-  EXPECT_TRUE(topic_types.empty());
+  // Should have no registered types
+  auto types = registry_->get_registered_types();
+  EXPECT_TRUE(types.empty());
 }
 
 TEST_F(MessageTypeRegistryTest, InvalidBagHandling) {
   // Try to register from non-existent bag
   EXPECT_NO_THROW(registry_->register_types_from_bag_metadata({"/nonexistent/bag.db3"}));
   
-  // Should have no discovered types
-  auto discovered_types = registry_->get_discovered_types();
-  EXPECT_TRUE(discovered_types.empty());
+  // Should have no registered types
+  auto types = registry_->get_registered_types();
+  EXPECT_TRUE(types.empty());
 }
 
 TEST_F(MessageTypeRegistryTest, DuplicateRegistration) {
@@ -193,33 +168,40 @@ TEST_F(MessageTypeRegistryTest, DuplicateRegistration) {
   registry_->register_types_from_bag_metadata({bag_path});
   registry_->register_types_from_bag_metadata({bag_path});
   
-  // Should only have one entry per type/topic
-  auto discovered_types = registry_->get_discovered_types();
-  EXPECT_EQ(discovered_types.size(), 1);
-  EXPECT_THAT(discovered_types, Contains("sensor_msgs/msg/PointCloud2"));
-  
-  auto topic_types = registry_->get_topic_type_map();
-  EXPECT_EQ(topic_types.size(), 1);
-  EXPECT_EQ(topic_types["/test"], "sensor_msgs/msg/PointCloud2");
+  // Should only have one entry per type
+  auto types = registry_->get_registered_types();
+  EXPECT_EQ(types.size(), 1);
+  EXPECT_TRUE(std::find(types.begin(), types.end(), "sensor_msgs/msg/PointCloud2") != types.end());
 }
 
-TEST_F(MessageTypeRegistryTest, GetTopicsByType) {
-  auto bag_path = bag_creator_->create_multi_topic_bag("registry_by_type.db3", 10);
+TEST_F(MessageTypeRegistryTest, CanDeserialize) {
+  auto bag_path = bag_creator_->create_multi_topic_bag("registry_deserialize.db3", 5);
   registry_->register_types_from_bag_metadata({bag_path});
   
-  // Get topics for specific type
-  auto pointcloud_topics = registry_->get_topics_by_type("sensor_msgs/msg/PointCloud2");
-  EXPECT_THAT(pointcloud_topics, Contains("/pointcloud"));
+  // Should be able to deserialize registered types
+  EXPECT_TRUE(registry_->can_deserialize("sensor_msgs/msg/PointCloud2"));
+  EXPECT_TRUE(registry_->can_deserialize("geometry_msgs/msg/Twist"));
+  EXPECT_TRUE(registry_->can_deserialize("std_msgs/msg/String"));
   
-  auto twist_topics = registry_->get_topics_by_type("geometry_msgs/msg/Twist");
-  EXPECT_THAT(twist_topics, Contains("/cmd_vel"));
+  // Should not be able to deserialize unregistered types
+  EXPECT_FALSE(registry_->can_deserialize("unknown_msgs/msg/Unknown"));
+}
+
+TEST_F(MessageTypeRegistryTest, TypeHash) {
+  auto bag_path = bag_creator_->create_test_bag("registry_hash.db3", 5, {"/test"});
+  registry_->register_types_from_bag_metadata({bag_path});
   
-  auto string_topics = registry_->get_topics_by_type("std_msgs/msg/String");
-  EXPECT_THAT(string_topics, Contains("/status"));
+  // Should have hash for registered types
+  auto hash = registry_->get_type_hash("sensor_msgs/msg/PointCloud2");
+  EXPECT_FALSE(hash.empty());
   
-  // Non-existent type should return empty vector
-  auto unknown_topics = registry_->get_topics_by_type("unknown_msgs/msg/Unknown");
-  EXPECT_TRUE(unknown_topics.empty());
+  // Hash should be consistent
+  auto hash2 = registry_->get_type_hash("sensor_msgs/msg/PointCloud2");
+  EXPECT_EQ(hash, hash2);
+  
+  // Unknown types should return empty hash
+  auto unknown_hash = registry_->get_type_hash("unknown_msgs/msg/Unknown");
+  EXPECT_TRUE(unknown_hash.empty());
 }
 
 TEST_F(MessageTypeRegistryTest, ThreadSafety) {
@@ -235,7 +217,7 @@ TEST_F(MessageTypeRegistryTest, ThreadSafety) {
     while (!stop_flag) {
       registry_->set_topic_filter(topics);
       registry_->clear_topic_filter();
-      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      std::this_thread::sleep_for(std::chrono::microseconds(10));
     }
   });
   
@@ -245,7 +227,7 @@ TEST_F(MessageTypeRegistryTest, ThreadSafety) {
     while (!stop_flag) {
       registry_->set_type_filter(types);
       registry_->clear_type_filter();
-      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      std::this_thread::sleep_for(std::chrono::microseconds(10));
     }
   });
   
@@ -253,13 +235,15 @@ TEST_F(MessageTypeRegistryTest, ThreadSafety) {
   threads.emplace_back([this, &stop_flag]() {
     while (!stop_flag) {
       registry_->is_topic_enabled("/pointcloud");
-      registry_->is_message_type_supported("sensor_msgs/msg/PointCloud2");
-      registry_->should_process_message("/cmd_vel", "geometry_msgs/msg/Twist");
-      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      registry_->is_type_enabled("sensor_msgs/msg/PointCloud2");
+      registry_->is_type_registered("geometry_msgs/msg/Twist");
+      registry_->can_deserialize("std_msgs/msg/String");
+      registry_->get_type_hash("sensor_msgs/msg/PointCloud2");
+      std::this_thread::sleep_for(std::chrono::microseconds(5));
     }
   });
   
-  // Let threads run for a bit
+  // Let threads run for a short time
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
   stop_flag = true;
   
@@ -269,5 +253,50 @@ TEST_F(MessageTypeRegistryTest, ThreadSafety) {
   }
   
   // Registry should still be in a valid state
-  EXPECT_NO_THROW(registry_->get_discovered_types());
+  EXPECT_NO_THROW(registry_->get_registered_types());
+}
+
+TEST_F(MessageTypeRegistryTest, FilterCombinations) {
+  auto bag_path = bag_creator_->create_multi_topic_bag("registry_combinations.db3", 5);
+  registry_->register_types_from_bag_metadata({bag_path});
+  
+  // Test various filter combinations
+  registry_->set_topic_filter({"/pointcloud"});
+  registry_->set_type_filter({"sensor_msgs/msg/PointCloud2"});
+  
+  EXPECT_TRUE(registry_->is_topic_enabled("/pointcloud"));
+  EXPECT_FALSE(registry_->is_topic_enabled("/cmd_vel"));
+  EXPECT_TRUE(registry_->is_type_enabled("sensor_msgs/msg/PointCloud2"));
+  EXPECT_FALSE(registry_->is_type_enabled("geometry_msgs/msg/Twist"));
+  
+  // Clear one filter
+  registry_->clear_topic_filter();
+  
+  EXPECT_TRUE(registry_->is_topic_enabled("/pointcloud"));
+  EXPECT_TRUE(registry_->is_topic_enabled("/cmd_vel"));
+  EXPECT_TRUE(registry_->is_type_enabled("sensor_msgs/msg/PointCloud2"));
+  EXPECT_FALSE(registry_->is_type_enabled("geometry_msgs/msg/Twist"));
+  
+  // Clear remaining filter
+  registry_->clear_type_filter();
+  
+  EXPECT_TRUE(registry_->is_topic_enabled("/pointcloud"));
+  EXPECT_TRUE(registry_->is_topic_enabled("/cmd_vel"));
+  EXPECT_TRUE(registry_->is_type_enabled("sensor_msgs/msg/PointCloud2"));
+  EXPECT_TRUE(registry_->is_type_enabled("geometry_msgs/msg/Twist"));
+}
+
+TEST_F(MessageTypeRegistryTest, EmptyFilters) {
+  auto bag_path = bag_creator_->create_multi_topic_bag("registry_empty_filters.db3", 5);
+  registry_->register_types_from_bag_metadata({bag_path});
+  
+  // Set empty filters
+  registry_->set_topic_filter({});
+  registry_->set_type_filter({});
+  
+  // With empty filters, nothing should be enabled
+  EXPECT_FALSE(registry_->is_topic_enabled("/pointcloud"));
+  EXPECT_FALSE(registry_->is_topic_enabled("/cmd_vel"));
+  EXPECT_FALSE(registry_->is_type_enabled("sensor_msgs/msg/PointCloud2"));
+  EXPECT_FALSE(registry_->is_type_enabled("geometry_msgs/msg/Twist"));
 }

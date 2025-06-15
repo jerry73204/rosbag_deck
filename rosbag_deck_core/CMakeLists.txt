@@ -86,7 +86,6 @@ install(TARGETS dynamic_types_example
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   find_package(ament_cmake_gtest REQUIRED)
-  find_package(ament_cmake_gmock REQUIRED)
   
   # Linting
   ament_lint_auto_find_test_dependencies()
@@ -102,7 +101,6 @@ if(BUILD_TESTING)
   )
   target_link_libraries(rosbag_deck_test_utils
     rosbag_deck_core
-    gmock
   )
   ament_target_dependencies(rosbag_deck_test_utils
     rosbag2_cpp
@@ -113,51 +111,54 @@ if(BUILD_TESTING)
     std_msgs
   )
   
-  # Unit tests (disabled temporarily - API mismatch needs fixing)
-  # ament_add_gtest(test_index_manager
-  #   test/unit/test_index_manager.cpp
-  # )
-  # target_link_libraries(test_index_manager
-  #   rosbag_deck_core
-  #   rosbag_deck_test_utils
-  #   gmock
-  # )
+  # Unit tests
+  ament_add_gtest(test_index_manager
+    test/unit/test_index_manager.cpp
+  )
+  target_link_libraries(test_index_manager
+    rosbag_deck_core
+    rosbag_deck_test_utils
+  )
   
-  # ament_add_gtest(test_message_cache
-  #   test/unit/test_message_cache.cpp
-  # )
-  # target_link_libraries(test_message_cache
-  #   rosbag_deck_core
-  #   rosbag_deck_test_utils
-  #   gmock
-  # )
+  ament_add_gtest(test_message_cache
+    test/unit/test_message_cache.cpp
+  )
+  target_link_libraries(test_message_cache
+    rosbag_deck_core
+    rosbag_deck_test_utils
+  )
   
-  # ament_add_gtest(test_message_type_registry
-  #   test/unit/test_message_type_registry.cpp
-  # )
-  # target_link_libraries(test_message_type_registry
-  #   rosbag_deck_core
-  #   rosbag_deck_test_utils
-  #   gmock
-  # )
+  ament_add_gtest(test_message_type_registry
+    test/unit/test_message_type_registry.cpp
+  )
+  target_link_libraries(test_message_type_registry
+    rosbag_deck_core
+    rosbag_deck_test_utils
+  )
   
-  # ament_add_gtest(test_bag_worker
-  #   test/unit/test_bag_worker.cpp
-  # )
-  # target_link_libraries(test_bag_worker
-  #   rosbag_deck_core
-  #   rosbag_deck_test_utils
-  #   gmock
-  # )
+  ament_add_gtest(test_bag_worker
+    test/unit/test_bag_worker.cpp
+  )
+  target_link_libraries(test_bag_worker
+    rosbag_deck_core
+    rosbag_deck_test_utils
+  )
   
-  # ament_add_gtest(test_rosbag_deck_core
-  #   test/unit/test_rosbag_deck_core.cpp
-  # )
-  # target_link_libraries(test_rosbag_deck_core
-  #   rosbag_deck_core
-  #   rosbag_deck_test_utils
-  #   gmock
-  # )
+  ament_add_gtest(test_rosbag_deck_core
+    test/unit/test_rosbag_deck_core.cpp
+  )
+  target_link_libraries(test_rosbag_deck_core
+    rosbag_deck_core
+    rosbag_deck_test_utils
+  )
+  
+  ament_add_gtest(test_c_api
+    test/unit/test_c_api.cpp
+  )
+  target_link_libraries(test_c_api
+    rosbag_deck_core
+    rosbag_deck_test_utils
+  )
   
   # Integration tests (disabled temporarily - API mismatch needs fixing)
   # ament_add_gtest(test_integration
@@ -166,7 +167,6 @@ if(BUILD_TESTING)
   # target_link_libraries(test_integration
   #   rosbag_deck_core
   #   rosbag_deck_test_utils
-  #   gmock
   # )
   
   # Performance tests (requires Google Benchmark) (disabled temporarily - API mismatch needs fixing)
@@ -178,7 +178,6 @@ if(BUILD_TESTING)
   #   target_link_libraries(test_performance
   #     rosbag_deck_core
   #     rosbag_deck_test_utils
-  #     gmock
   #     benchmark::benchmark
   #   )
   # endif()

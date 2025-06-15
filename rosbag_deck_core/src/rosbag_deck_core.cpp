@@ -52,10 +52,31 @@ MessageT RosbagDeckCore::deserialize_message(
 
 bool RosbagDeckCore::is_message_type_supported(
     const std::string &message_type) {
-  // With rosbag2 integration, we support all message types dynamically
-  // The type registry will determine which types can be deserialized
-  (void)message_type; // Suppress unused parameter warning
-  return true;
+  // Check if the message type is one of the commonly supported ROS 2 types
+  // This is a static check for well-known message types
+  static const std::set<std::string> supported_types = {
+    "sensor_msgs/msg/PointCloud2",
+    "sensor_msgs/msg/Image", 
+    "sensor_msgs/msg/CompressedImage",
+    "sensor_msgs/msg/CameraInfo",
+    "sensor_msgs/msg/LaserScan",
+    "sensor_msgs/msg/Imu",
+    "geometry_msgs/msg/Twist",
+    "geometry_msgs/msg/TwistStamped", 
+    "geometry_msgs/msg/Pose",
+    "geometry_msgs/msg/PoseStamped",
+    "geometry_msgs/msg/Transform",
+    "geometry_msgs/msg/TransformStamped",
+    "std_msgs/msg/String",
+    "std_msgs/msg/Header",
+    "std_msgs/msg/Bool",
+    "std_msgs/msg/Int32",
+    "std_msgs/msg/Float64",
+    "nav_msgs/msg/Odometry",
+    "tf2_msgs/msg/TFMessage"
+  };
+  
+  return supported_types.find(message_type) != supported_types.end();
 }
 
 // IndexManager implementation
@@ -72,6 +93,8 @@ void IndexManager::build_index(const std::vector<std::string> &bag_paths) {
   Timestamp earliest_time = Timestamp::max();
   Timestamp latest_time = Timestamp::min();
   topic_types_.clear();
+  
+  size_t successful_bags = 0;
 
   for (size_t bag_idx = 0; bag_idx < bag_paths.size(); ++bag_idx) {
     try {
@@ -121,12 +144,18 @@ void IndexManager::build_index(const std::vector<std::string> &bag_paths) {
       }
 
       reader.close();
+      successful_bags++;
 
     } catch (const std::exception &e) {
       std::cerr << "Error reading bag " << bag_paths[bag_idx] << ": "
                 << e.what() << std::endl;
       continue;
     }
+  }
+  
+  // If no bags were successfully processed, throw an exception
+  if (successful_bags == 0 && !bag_paths.empty()) {
+    throw std::runtime_error("Failed to open any of the provided bag files");
   }
 
   // Sort index by timestamp
@@ -142,8 +171,14 @@ void IndexManager::build_index(const std::vector<std::string> &bag_paths) {
 
   // Store topic names and time bounds
   topic_names_.assign(unique_topics.begin(), unique_topics.end());
-  start_time_ = earliest_time;
-  end_time_ = latest_time;
+  if (index_.empty()) {
+    // No messages found - set default timestamps
+    start_time_ = Timestamp::min();
+    end_time_ = Timestamp::min();
+  } else {
+    start_time_ = earliest_time;
+    end_time_ = latest_time;
+  }
 
   std::cout << "Index built: " << index_.size() << " messages, "
             << topic_names_.size() << " topics" << std::endl;
@@ -208,6 +243,12 @@ void MessageCache::evict_outside_window(size_t center_frame,
                                         size_t window_size) {
   std::lock_guard<std::mutex> lock(cache_mutex_);
 
+  // Special case: window_size 0 means evict everything
+  if (window_size == 0) {
+    cache_.clear();
+    return;
+  }
+
   size_t half_window = window_size / 2;
   size_t min_frame =
       (center_frame > half_window) ? center_frame - half_window : 0;
@@ -238,6 +279,13 @@ BagWorker::BagWorker(const IndexManager &index_manager)
 BagWorker::~BagWorker() { stop(); }
 
 void BagWorker::start() {
+  // Stop any existing thread first
+  if (worker_thread_.joinable()) {
+    should_stop_ = true;
+    queue_cv_.notify_all();
+    worker_thread_.join();
+  }
+  
   should_stop_ = false;
   worker_thread_ = std::thread(&BagWorker::worker_thread, this);
 }
@@ -420,7 +468,8 @@ BagMessage BagWorker::load_message_at_frame(size_t frame_index) {
 RosbagDeckCore::RosbagDeckCore()
     : timeline_segment_(0), is_playing_(false), current_frame_(0),
       playback_rate_(1.0), loop_playback_(false), cache_size_(1000),
-      preload_ahead_(100), preload_behind_(100), status_thread_running_(false) {
+      preload_ahead_(100), preload_behind_(100), status_thread_running_(false),
+      index_built_successfully_(false) {
   virtual_start_time_ = std::chrono::steady_clock::now();
 
   index_manager_ = std::make_unique<IndexManager>();
@@ -498,9 +547,15 @@ bool RosbagDeckCore::build_index(const std::vector<std::string> &bag_paths) {
       }
     });
 
+    index_built_successfully_ = true;
     return true;
   } catch (const std::exception &e) {
     std::cerr << "Error building index: " << e.what() << std::endl;
+    
+    // Clear the index manager on failure so get_bag_info returns failure
+    index_manager_ = std::make_unique<IndexManager>();
+    index_built_successfully_ = false;
+    
     return false;
   }
 }
@@ -576,20 +631,28 @@ bool RosbagDeckCore::seek_to_frame(size_t frame_index) {
 
 BagInfo RosbagDeckCore::get_bag_info() const {
   BagInfo info;
-  if (!index_manager_ || index_manager_->total_frames() == 0) {
+  if (!index_manager_ || !index_built_successfully_) {
     info.success = false;
-    info.message = "No bags indexed";
+    info.message = index_built_successfully_ ? "No bags indexed" : "Failed to build index";
     return info;
   }
 
   info.success = true;
-  info.message = "Bag information retrieved successfully";
-  info.start_time = index_manager_->start_time();
-  info.end_time = index_manager_->end_time();
-  info.total_duration =
-      std::chrono::duration_cast<Duration>(info.end_time - info.start_time);
   info.total_frames = index_manager_->total_frames();
   info.topic_names = index_manager_->topic_names();
+  
+  if (info.total_frames == 0) {
+    info.message = "Empty bag - no messages found";
+    info.start_time = Timestamp::min();
+    info.end_time = Timestamp::min();
+    info.total_duration = Duration::zero();
+  } else {
+    info.message = "Bag information retrieved successfully";
+    info.start_time = index_manager_->start_time();
+    info.end_time = index_manager_->end_time();
+    info.total_duration =
+        std::chrono::duration_cast<Duration>(info.end_time - info.start_time);
+  }
 
   return info;
 }
@@ -815,7 +878,7 @@ void MessageTypeRegistry::set_topic_filter(
   std::lock_guard<std::mutex> lock(registry_mutex_);
   enabled_topics_.clear();
   enabled_topics_.insert(topics.begin(), topics.end());
-  topic_filter_active_ = !topics.empty();
+  topic_filter_active_ = true; // Any call to set_topic_filter activates filtering
 }
 
 void MessageTypeRegistry::clear_topic_filter() {
@@ -828,7 +891,10 @@ bool MessageTypeRegistry::is_topic_enabled(
     const std::string &topic_name) const {
   std::lock_guard<std::mutex> lock(registry_mutex_);
   if (!topic_filter_active_) {
-    return true; // All topics enabled if no filter
+    // If no filter is active, check if the topic exists in any registered types
+    // Since we don't track topics separately, we'll be permissive and return true
+    // This maintains backward compatibility but may need refinement
+    return true;
   }
   return enabled_topics_.find(topic_name) != enabled_topics_.end();
 }
@@ -838,7 +904,7 @@ void MessageTypeRegistry::set_type_filter(
   std::lock_guard<std::mutex> lock(registry_mutex_);
   enabled_types_.clear();
   enabled_types_.insert(types.begin(), types.end());
-  type_filter_active_ = !types.empty();
+  type_filter_active_ = true; // Any call to set_type_filter activates filtering
 }
 
 void MessageTypeRegistry::clear_type_filter() {

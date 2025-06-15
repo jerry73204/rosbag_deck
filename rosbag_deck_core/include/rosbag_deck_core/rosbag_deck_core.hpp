@@ -298,6 +298,9 @@ private:
   // Status publishing
   std::thread status_thread_;
   std::atomic<bool> status_thread_running_;
+  
+  // Index state
+  bool index_built_successfully_;
 };
 
 } // namespace rosbag_deck_core

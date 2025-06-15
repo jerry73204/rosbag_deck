@@ -1,34 +1,32 @@
 #include <gtest/gtest.h>
-#include <gmock/gmock.h>
 #include "rosbag_deck_core/rosbag_deck_core.hpp"
 #include "../fixtures/test_bag_creator.hpp"
 #include "../fixtures/test_data_generator.hpp"
-#include "../fixtures/mock_callbacks.hpp"
 #include <chrono>
 #include <thread>
 
 using namespace rosbag_deck_core;
 using namespace rosbag_deck_core::test;
-using namespace testing;
 
 class BagWorkerTest : public ::testing::Test {
 protected:
   void SetUp() override {
     bag_creator_ = std::make_unique<TestBagCreator>();
     data_generator_ = std::make_unique<TestDataGenerator>();
-    mock_handler_ = std::make_shared<MockCallbackHandler>();
     
-    // Create a test bag for most tests
-    test_bag_path_ = bag_creator_->create_test_bag("worker_test.db3", 20, {"/test_topic"});
+    // Create a unique test bag name for each test
+    auto test_info = ::testing::UnitTest::GetInstance()->current_test_info();
+    std::string bag_name = std::string("worker_") + test_info->test_case_name() + "_" + test_info->name() + ".db3";
     
-    // Setup worker with mock callbacks
-    worker_ = std::make_unique<BagWorker>();
-    worker_->set_message_callback([this](const BagMessage& msg) {
-      mock_handler_->record_message(msg);
-    });
-    worker_->set_status_callback([this](const PlaybackStatus& status) {
-      mock_handler_->record_status(status);
-    });
+    // Create a test bag and build index
+    test_bag_path_ = bag_creator_->create_test_bag(bag_name, 20, {"/test_topic"});
+    index_manager_ = std::make_unique<IndexManager>();
+    index_manager_->build_index({test_bag_path_});
+    
+    // Create cache and worker
+    cache_ = std::make_shared<MessageCache>(100);
+    worker_ = std::make_unique<BagWorker>(*index_manager_);
+    worker_->set_cache(cache_);
   }
 
   void TearDown() override {
@@ -40,295 +38,300 @@ protected:
 
   std::unique_ptr<TestBagCreator> bag_creator_;
   std::unique_ptr<TestDataGenerator> data_generator_;
-  std::shared_ptr<MockCallbackHandler> mock_handler_;
+  std::unique_ptr<IndexManager> index_manager_;
+  std::shared_ptr<MessageCache> cache_;
   std::unique_ptr<BagWorker> worker_;
   std::string test_bag_path_;
 };
 
-TEST_F(BagWorkerTest, InitializeWithBag) {
-  // Initialize worker with test bag
-  EXPECT_TRUE(worker_->initialize({test_bag_path_}));
-  
-  // Verify initialization
-  EXPECT_TRUE(worker_->is_initialized());
-  auto total_frames = worker_->get_total_frames();
-  EXPECT_EQ(total_frames, 20);
+TEST_F(BagWorkerTest, BasicConstruction) {
+  // Worker should be constructible with index manager
+  EXPECT_NO_THROW(BagWorker worker(*index_manager_));
 }
 
-TEST_F(BagWorkerTest, InitializeWithInvalidBag) {
-  // Try to initialize with non-existent bag
-  EXPECT_FALSE(worker_->initialize({"/nonexistent/bag.db3"}));
-  EXPECT_FALSE(worker_->is_initialized());
+TEST_F(BagWorkerTest, StartAndStop) {
+  // Start worker
+  EXPECT_NO_THROW(worker_->start());
+  
+  // Should be able to start multiple times (idempotent)
+  EXPECT_NO_THROW(worker_->start());
+  
+  // Stop worker
+  EXPECT_NO_THROW(worker_->stop());
+  
+  // Should be able to stop multiple times (idempotent)
+  EXPECT_NO_THROW(worker_->stop());
 }
 
-TEST_F(BagWorkerTest, InitializeWithMultipleBags) {
-  auto bag2 = bag_creator_->create_test_bag("worker_test2.db3", 15, {"/topic2"});
+TEST_F(BagWorkerTest, RequestRange) {
+  worker_->start();
   
-  // Initialize with multiple bags
-  EXPECT_TRUE(worker_->initialize({test_bag_path_, bag2}));
-  EXPECT_TRUE(worker_->is_initialized());
+  // Request a range of messages
+  auto future = worker_->request_range(0, 5);
   
-  // Total frames should be sum of both bags
-  EXPECT_EQ(worker_->get_total_frames(), 35);
-}
-
-TEST_F(BagWorkerTest, SeekToFrame) {
-  worker_->initialize({test_bag_path_});
+  // Should complete successfully
+  EXPECT_TRUE(future.get());
   
-  // Seek to middle frame
-  EXPECT_TRUE(worker_->seek_to_frame(10));
-  EXPECT_EQ(worker_->get_current_frame(), 10);
-  
-  // Seek to first frame
-  EXPECT_TRUE(worker_->seek_to_frame(0));
-  EXPECT_EQ(worker_->get_current_frame(), 0);
-  
-  // Seek to last frame
-  EXPECT_TRUE(worker_->seek_to_frame(19));
-  EXPECT_EQ(worker_->get_current_frame(), 19);
-}
-
-TEST_F(BagWorkerTest, SeekToInvalidFrame) {
-  worker_->initialize({test_bag_path_});
-  
-  // Seek beyond end
-  EXPECT_FALSE(worker_->seek_to_frame(100));
-  
-  // Current frame should not change
-  EXPECT_EQ(worker_->get_current_frame(), 0);
-}
-
-TEST_F(BagWorkerTest, PlayFromStart) {
-  worker_->initialize({test_bag_path_});
-  
-  // Set up expectations for messages
-  EXPECT_CALL(*mock_handler_, on_message(_))
-      .Times(AtLeast(1));
-  EXPECT_CALL(*mock_handler_, on_status(_))
-      .Times(AtLeast(1));
-  
-  // Start playback
-  worker_->play();
-  
-  // Wait a bit for messages to be processed
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
-  
-  // Stop playback
-  worker_->pause();
-  
-  // Verify some messages were received
-  auto messages = mock_handler_->get_message_history();
-  EXPECT_GT(messages.size(), 0);
-}
-
-TEST_F(BagWorkerTest, PlayPauseCycle) {
-  worker_->initialize({test_bag_path_});
-  
-  // Start playback
-  worker_->play();
-  EXPECT_TRUE(worker_->is_playing());
-  
-  std::this_thread::sleep_for(std::chrono::milliseconds(50));
-  
-  // Pause playback
-  worker_->pause();
-  EXPECT_FALSE(worker_->is_playing());
-  
-  // Resume playback
-  worker_->play();
-  EXPECT_TRUE(worker_->is_playing());
-  
-  worker_->pause();
-}
-
-TEST_F(BagWorkerTest, StepForward) {
-  worker_->initialize({test_bag_path_});
-  
-  size_t initial_frame = worker_->get_current_frame();
-  
-  // Step forward
-  EXPECT_TRUE(worker_->step_forward());
-  EXPECT_EQ(worker_->get_current_frame(), initial_frame + 1);
-  
-  // Step forward again
-  EXPECT_TRUE(worker_->step_forward());
-  EXPECT_EQ(worker_->get_current_frame(), initial_frame + 2);
-}
-
-TEST_F(BagWorkerTest, StepBackward) {
-  worker_->initialize({test_bag_path_});
-  
-  // Seek to middle first
-  worker_->seek_to_frame(10);
-  
-  // Step backward
-  EXPECT_TRUE(worker_->step_backward());
-  EXPECT_EQ(worker_->get_current_frame(), 9);
-  
-  // Step backward again
-  EXPECT_TRUE(worker_->step_backward());
-  EXPECT_EQ(worker_->get_current_frame(), 8);
-}
-
-TEST_F(BagWorkerTest, StepAtBoundaries) {
-  worker_->initialize({test_bag_path_});
-  
-  // Step backward at beginning
-  worker_->seek_to_frame(0);
-  EXPECT_FALSE(worker_->step_backward());
-  EXPECT_EQ(worker_->get_current_frame(), 0);
-  
-  // Step forward at end
-  worker_->seek_to_frame(19);
-  EXPECT_FALSE(worker_->step_forward());
-  EXPECT_EQ(worker_->get_current_frame(), 19);
-}
-
-TEST_F(BagWorkerTest, SetPlaybackSpeed) {
-  worker_->initialize({test_bag_path_});
-  
-  // Test various playback speeds
-  EXPECT_TRUE(worker_->set_playback_speed(0.5));
-  EXPECT_TRUE(worker_->set_playback_speed(2.0));
-  EXPECT_TRUE(worker_->set_playback_speed(1.0));
-  
-  // Test invalid speeds
-  EXPECT_FALSE(worker_->set_playback_speed(0.0));
-  EXPECT_FALSE(worker_->set_playback_speed(-1.0));
-}
-
-TEST_F(BagWorkerTest, RewindOperation) {
-  worker_->initialize({test_bag_path_});
-  
-  // Play some frames
-  worker_->seek_to_frame(10);
-  
-  // Rewind
-  worker_->rewind();
-  
-  // Should be back at beginning
-  EXPECT_EQ(worker_->get_current_frame(), 0);
-}
-
-TEST_F(BagWorkerTest, StatusCallbacks) {
-  worker_->initialize({test_bag_path_});
-  
-  // Expect status updates
-  EXPECT_CALL(*mock_handler_, on_status(_))
-      .Times(AtLeast(3)); // Initial, play, pause
-  
-  worker_->play();
-  std::this_thread::sleep_for(std::chrono::milliseconds(50));
-  worker_->pause();
-  
-  // Verify status history
-  auto statuses = mock_handler_->get_status_history();
-  EXPECT_GT(statuses.size(), 0);
-  
-  // Check for state changes
-  bool found_playing = false;
-  bool found_paused = false;
-  for (const auto& status : statuses) {
-    if (status.state == PlaybackState::PLAYING) found_playing = true;
-    if (status.state == PlaybackState::PAUSED) found_paused = true;
+  // Messages should be in cache
+  for (size_t i = 0; i <= 5; ++i) {
+    EXPECT_TRUE(cache_->is_frame_cached(i));
   }
-  EXPECT_TRUE(found_playing || found_paused);
+  
+  worker_->stop();
 }
 
-TEST_F(BagWorkerTest, MessageCallbacks) {
-  worker_->initialize({test_bag_path_});
+TEST_F(BagWorkerTest, RequestSeek) {
+  worker_->start();
   
-  // Expect message callbacks
-  EXPECT_CALL(*mock_handler_, on_message(_))
-      .Times(AtLeast(1));
-  
-  // Step through a few frames
-  worker_->step_forward();
-  worker_->step_forward();
-  
-  // Verify messages were received
-  auto messages = mock_handler_->get_message_history();
-  EXPECT_GT(messages.size(), 0);
-  
-  // Verify message content
-  if (!messages.empty()) {
-    EXPECT_EQ(messages[0].topic_name, "/test_topic");
-    EXPECT_EQ(messages[0].message_type, "sensor_msgs/msg/PointCloud2");
+  if (index_manager_->total_frames() > 0) {
+    // Request seek to start time
+    auto start_time = index_manager_->start_time();
+    auto future = worker_->request_seek(start_time);
+    
+    // Should complete successfully
+    EXPECT_TRUE(future.get());
+    
+    // Frame 0 should be in cache
+    EXPECT_TRUE(cache_->is_frame_cached(0));
   }
+  
+  worker_->stop();
 }
 
-TEST_F(BagWorkerTest, ThreadSafety) {
-  worker_->initialize({test_bag_path_});
+TEST_F(BagWorkerTest, SetCache) {
+  // Create new cache
+  auto new_cache = std::make_shared<MessageCache>(50);
   
-  // Launch multiple threads performing different operations
+  // Set cache
+  EXPECT_NO_THROW(worker_->set_cache(new_cache));
+  
+  worker_->start();
+  
+  // Request range
+  auto future = worker_->request_range(0, 3);
+  future.get();
+  
+  // Messages should be in new cache
+  for (size_t i = 0; i <= 3; ++i) {
+    EXPECT_TRUE(new_cache->is_frame_cached(i));
+  }
+  
+  // Old cache should be empty
+  for (size_t i = 0; i <= 3; ++i) {
+    EXPECT_FALSE(cache_->is_frame_cached(i));
+  }
+  
+  worker_->stop();
+}
+
+TEST_F(BagWorkerTest, MultipleRequests) {
+  worker_->start();
+  
+  // Submit multiple requests
+  std::vector<std::future<bool>> futures;
+  
+  futures.push_back(worker_->request_range(0, 3));
+  futures.push_back(worker_->request_range(5, 8));
+  futures.push_back(worker_->request_range(10, 13));
+  
+  // All should complete successfully
+  for (auto& future : futures) {
+    EXPECT_TRUE(future.get());
+  }
+  
+  // All requested frames should be cached
+  for (size_t i = 0; i <= 3; ++i) {
+    EXPECT_TRUE(cache_->is_frame_cached(i));
+  }
+  for (size_t i = 5; i <= 8; ++i) {
+    EXPECT_TRUE(cache_->is_frame_cached(i));
+  }
+  for (size_t i = 10; i <= 13; ++i) {
+    EXPECT_TRUE(cache_->is_frame_cached(i));
+  }
+  
+  worker_->stop();
+}
+
+TEST_F(BagWorkerTest, LargeRangeRequest) {
+  worker_->start();
+  
+  // Request entire bag
+  size_t total_frames = index_manager_->total_frames();
+  if (total_frames > 0) {
+    auto future = worker_->request_range(0, total_frames - 1);
+    EXPECT_TRUE(future.get());
+    
+    // All frames should be cached (up to cache limit)
+    size_t cached_count = 0;
+    for (size_t i = 0; i < total_frames; ++i) {
+      if (cache_->is_frame_cached(i)) {
+        cached_count++;
+      }
+    }
+    EXPECT_GT(cached_count, 0);
+  }
+  
+  worker_->stop();
+}
+
+TEST_F(BagWorkerTest, InvalidRangeRequest) {
+  worker_->start();
+  
+  // Request invalid range (beyond available frames)
+  size_t total_frames = index_manager_->total_frames();
+  auto future = worker_->request_range(total_frames + 10, total_frames + 20);
+  
+  // Should handle gracefully (may return false or complete without caching)
+  EXPECT_NO_THROW(future.get());
+  
+  worker_->stop();
+}
+
+TEST_F(BagWorkerTest, ConcurrentRequests) {
+  worker_->start();
+  
+  // Launch multiple threads making requests
   std::vector<std::thread> threads;
+  std::vector<bool> results(4, false);
   
-  // Thread 1: Play/pause cycles
-  threads.emplace_back([this]() {
-    for (int i = 0; i < 10; ++i) {
-      worker_->play();
-      std::this_thread::sleep_for(std::chrono::milliseconds(10));
-      worker_->pause();
-      std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
-  });
+  for (int i = 0; i < 4; ++i) {
+    threads.emplace_back([this, i, &results]() {
+      auto future = worker_->request_range(i * 3, i * 3 + 2);
+      results[i] = future.get();
+    });
+  }
   
-  // Thread 2: Seeking operations
-  threads.emplace_back([this]() {
-    for (int i = 0; i < 20; ++i) {
-      worker_->seek_to_frame(i);
-      std::this_thread::sleep_for(std::chrono::milliseconds(5));
-    }
-  });
-  
-  // Thread 3: Step operations
-  threads.emplace_back([this]() {
-    for (int i = 0; i < 10; ++i) {
-      worker_->step_forward();
-      std::this_thread::sleep_for(std::chrono::milliseconds(15));
-      worker_->step_backward();
-      std::this_thread::sleep_for(std::chrono::milliseconds(15));
-    }
-  });
-  
-  // Wait for all threads to complete
+  // Wait for all threads
   for (auto& thread : threads) {
     thread.join();
   }
   
-  // Worker should still be in a valid state
-  EXPECT_TRUE(worker_->is_initialized());
-}
-
-TEST_F(BagWorkerTest, MultipleTopicPlayback) {
-  auto multi_bag = bag_creator_->create_multi_topic_bag("multi_worker.db3", 10);
-  worker_->initialize({multi_bag});
-  
-  EXPECT_CALL(*mock_handler_, on_message(_))
-      .Times(AtLeast(10));
-  
-  // Play through several frames
-  for (int i = 0; i < 5; ++i) {
-    worker_->step_forward();
+  // All requests should succeed
+  for (bool result : results) {
+    EXPECT_TRUE(result);
   }
   
-  // Verify different topic messages were received
-  auto messages = mock_handler_->get_message_history();
-  
-  std::set<std::string> received_topics;
-  for (const auto& msg : messages) {
-    received_topics.insert(msg.topic_name);
-  }
-  
-  EXPECT_GT(received_topics.size(), 1);
+  worker_->stop();
 }
 
-TEST_F(BagWorkerTest, ResourceCleanup) {
+TEST_F(BagWorkerTest, WorkerThreadLifecycle) {
+  // Worker should handle start/stop cycles
+  for (int cycle = 0; cycle < 3; ++cycle) {
+    worker_->start();
+    
+    // Make a request
+    auto future = worker_->request_range(0, 2);
+    EXPECT_TRUE(future.get());
+    
+    worker_->stop();
+  }
+}
+
+TEST_F(BagWorkerTest, StopDuringWork) {
+  worker_->start();
+  
+  // Start a large request
+  auto future = worker_->request_range(0, 19);
+  
+  // Stop worker while working
+  std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  worker_->stop();
+  
+  // Future should complete (may be true or false)
+  EXPECT_NO_THROW(future.get());
+}
+
+TEST_F(BagWorkerTest, WorkerWithEmptyIndex) {
+  // Create empty index
+  auto empty_index = std::make_unique<IndexManager>();
+  auto empty_bag = bag_creator_->create_test_bag("empty_worker.db3", 0, {});
+  empty_index->build_index({empty_bag});
+  
+  // Create worker with empty index
+  auto empty_worker = std::make_unique<BagWorker>(*empty_index);
+  empty_worker->set_cache(cache_);
+  
+  empty_worker->start();
+  
+  // Request should complete (likely false due to no data)
+  auto future = empty_worker->request_range(0, 5);
+  EXPECT_NO_THROW(future.get());
+  
+  empty_worker->stop();
+}
+
+TEST_F(BagWorkerTest, MultipleSeekRequests) {
+  worker_->start();
+  
+  if (index_manager_->total_frames() > 5) {
+    // Make multiple seek requests
+    std::vector<std::future<bool>> futures;
+    
+    auto start_time = index_manager_->start_time();
+    auto end_time = index_manager_->end_time();
+    auto duration = end_time - start_time;
+    
+    // Seek to different time points
+    futures.push_back(worker_->request_seek(start_time));
+    futures.push_back(worker_->request_seek(start_time + duration / 4));
+    futures.push_back(worker_->request_seek(start_time + duration / 2));
+    futures.push_back(worker_->request_seek(start_time + 3 * duration / 4));
+    
+    // All should complete
+    for (auto& future : futures) {
+      EXPECT_NO_THROW(future.get());
+    }
+  }
+  
+  worker_->stop();
+}
+
+TEST_F(BagWorkerTest, RequestWithNullCache) {
+  // Create worker without cache
+  auto worker_no_cache = std::make_unique<BagWorker>(*index_manager_);
+  
+  worker_no_cache->start();
+  
+  // Request should handle null cache gracefully
+  auto future = worker_no_cache->request_range(0, 3);
+  EXPECT_NO_THROW(future.get());
+  
+  worker_no_cache->stop();
+}
+
+TEST_F(BagWorkerTest, HighFrequencyRequests) {
+  worker_->start();
+  
+  // Submit many small requests rapidly
+  std::vector<std::future<bool>> futures;
+  
+  for (int i = 0; i < 10; ++i) {
+    futures.push_back(worker_->request_range(i, i));
+  }
+  
+  // All should complete
+  int successful = 0;
+  for (auto& future : futures) {
+    if (future.get()) {
+      successful++;
+    }
+  }
+  
+  EXPECT_GT(successful, 0);
+  
+  worker_->stop();
+}
+
+TEST_F(BagWorkerTest, WorkerDestructorWhileRunning) {
   {
-    auto temp_worker = std::make_unique<BagWorker>();
-    temp_worker->initialize({test_bag_path_});
-    temp_worker->play();
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    auto temp_worker = std::make_unique<BagWorker>(*index_manager_);
+    temp_worker->set_cache(cache_);
+    temp_worker->start();
+    
+    // Start some work
+    auto future = temp_worker->request_range(0, 5);
+    
     // Worker destructor should clean up properly
   }
   
