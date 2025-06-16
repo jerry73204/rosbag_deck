@@ -18,6 +18,11 @@ find_package(std_msgs REQUIRED)
 add_library(rosbag_deck_core SHARED
   src/rosbag_deck_core.cpp
   src/rosbag_deck_c.cpp
+  src/utilities.cpp
+  src/index_manager.cpp
+  src/message_cache.cpp
+  src/bag_worker.cpp
+  src/message_type_registry.cpp
 )
 
 target_include_directories(rosbag_deck_core PUBLIC
