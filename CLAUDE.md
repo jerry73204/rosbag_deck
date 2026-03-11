@@ -15,6 +15,7 @@ just setup    # Install colcon-cargo-ros2
 just build    # colcon build with dev-release profile
 just check    # clippy (deny warnings) + nightly fmt check
 just test     # cargo nextest run
+just quality  # check + test (run before finishing implementation work)
 just format   # cargo +nightly fmt
 just clean    # cargo clean + remove colcon dirs (build/, install/, log/)
 ```
@@ -105,6 +106,16 @@ rosbag-deck-tests (integration tests)
 - Uses UV (not pip/rye) for workspace management
 - Python bindings built with maturin (PyO3)
 - Root `pyproject.toml` defines UV workspace
+
+## Quality Gate
+
+Before finishing any implementation work, always run:
+
+```bash
+just quality
+```
+
+This runs clippy (with `-D warnings`) and all tests via nextest. All warnings and test failures must be resolved before considering the work complete.
 
 ## Development Principles
 

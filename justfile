@@ -22,6 +22,8 @@ setup:
 generate-bindings:
     cargo build --profile {{ profile }} -p rosbag-deck-ffi --features generate-bindings
 
+quality: check test
+
 clean:
     cargo clean
     rm -rf build install log
