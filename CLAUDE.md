@@ -8,35 +8,36 @@ RosBag Deck is an interactive ROS 2 bag player with tape deck-style controls. It
 
 The project is written in Rust with Python bindings via PyO3.
 
+## Justfile Recipes
+
+```bash
+just setup    # Install colcon-cargo-ros2
+just build    # colcon build with dev-release profile
+just check    # clippy (deny warnings) + nightly fmt check
+just test     # cargo nextest run
+just format   # cargo +nightly fmt
+just clean    # cargo clean + remove colcon dirs (build/, install/, log/)
+```
+
+The default Cargo profile is `dev-release` (inherits `release` with `debug`, `debug-assertions`, `overflow-checks` enabled). Override with `just --set profile release`.
+
 ## Build Commands
 
-### Rust (Cargo)
+### Cargo (direct)
 ```bash
-# Build all workspace members
-cargo build
-
-# Build a specific package
-cargo build -p rosbag-deck
-cargo build -p rosbag-deck-cli
-cargo build -p rosbag-deck-python
-cargo build -p rosbag-deck-ffi
+cargo build --profile dev-release
+cargo build --profile dev-release -p rosbag-deck
 ```
 
 ### Colcon (ROS 2 integration via colcon-cargo-ros2)
 ```bash
-# Full build
-colcon build
-
-# Individual package
+colcon build --cargo-args --profile dev-release
 colcon build --packages-select rosbag_deck
 ```
 
 ### Python
 ```bash
-# Install Python dependencies
 uv sync
-
-# Build Python bindings (via maturin)
 cd packages/rosbag-deck-python && maturin develop
 ```
 
@@ -44,8 +45,8 @@ cd packages/rosbag-deck-python && maturin develop
 
 ```bash
 # Rust
-cargo clippy --workspace
-cargo fmt --check
+cargo clippy --workspace --profile dev-release -- -D warnings
+cargo +nightly fmt --check
 
 # Python
 uv run ruff check packages/rosbag-deck-python/
@@ -59,9 +60,6 @@ cargo nextest run
 
 # Python tests
 uv run pytest packages/rosbag-deck-python/ -v
-
-# Full suite via justfile
-just test
 ```
 
 ## Architecture
@@ -98,8 +96,9 @@ rosbag-deck-tests (integration tests)
 ### ROS 2 Integration
 
 - Packages declare `<build_type>ament_cargo</build_type>` in package.xml
-- Built via colcon-cargo-ros2 plugin
+- Built via colcon-cargo-ros2 plugin (`just setup` to install)
 - ROS 2 Humble or later
+- `.envrc` sources `/opt/ros/humble/setup.bash` and `install/setup.bash` automatically
 
 ### Python Package Management
 
@@ -107,20 +106,9 @@ rosbag-deck-tests (integration tests)
 - Python bindings built with maturin (PyO3)
 - Root `pyproject.toml` defines UV workspace
 
-### Build Helpers (justfile)
-
-```bash
-just build    # Build with dev-release profile (release + debug info/assertions)
-just check    # clippy + fmt check
-just test     # cargo nextest run
-just format   # cargo fmt
-just clean    # cargo clean + remove colcon dirs
-```
-
-The default Cargo profile is `dev-release` (inherits `release` with debug, debug-assertions, overflow-checks enabled).
-
 ## Development Principles
 
 - If a feature or work is not done yet, always leave TODO comments. Don't generate dummy values or any kind of silent error.
 - Use `thiserror` for library error types, `anyhow` for application error handling.
 - Prefer channels over shared mutable state for thread communication.
+- Use `cargo +nightly fmt` for formatting (nightly rustfmt).

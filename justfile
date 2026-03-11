@@ -4,7 +4,7 @@ default:
     @just --list
 
 build:
-    cargo build --profile {{ profile }}
+    colcon build --cargo-args --profile {{ profile }}
 
 check:
     cargo clippy --workspace --profile {{ profile }} -- -D warnings
@@ -15,6 +15,9 @@ test:
 
 format:
     cargo +nightly fmt
+
+setup:
+    pip install colcon-cargo-ros2
 
 clean:
     cargo clean
