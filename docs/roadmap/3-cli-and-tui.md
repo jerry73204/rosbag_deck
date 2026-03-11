@@ -2,7 +2,7 @@
 
 Build the command-line interface and terminal UI.
 
-## CLI (`rosbag-deck-cli`)
+## 3.1 CLI (`rosbag-deck-cli`)
 
 - [ ] `play <bag_path>` — Play a bag file (launches TUI by default)
 - [ ] `info <bag_path>` — Show bag metadata (topics, message counts, duration)
@@ -10,7 +10,7 @@ Build the command-line interface and terminal UI.
 - [ ] `--topics` flag for topic filtering
 - [ ] `--rate` flag for playback speed
 
-## TUI (ratatui)
+## 3.2 TUI (ratatui)
 
 - [ ] Tape deck-style visual layout
 - [ ] Playback controls: play, pause, stop, step forward/backward

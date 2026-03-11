@@ -6,10 +6,16 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
+[features]
+# Run bindgen to regenerate src/sys.rs from wrapper/rosbag2_wrapper.h.
+# Without this feature, the checked-in src/sys.rs is used as-is.
+generate-bindings = ["bindgen"]
+
 [dependencies]
+rosbag-deck = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 
-# TODO: Add rosbag2 FFI bindings (bindgen or manual)
-# [build-dependencies]
-# bindgen = "0.71"
+[build-dependencies]
+cc = "1"
+bindgen = { version = "0.71", optional = true }

@@ -7,9 +7,5 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-mcap = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
-
-# TODO: Add rosbag-deck-ffi dependency once ROS 2 FFI layer is ready
-# rosbag-deck-ffi = { workspace = true }

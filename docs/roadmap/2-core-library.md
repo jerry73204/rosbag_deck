@@ -1,36 +1,46 @@
 # Phase 2: Core Library
 
-Port the core playback engine from C++ to Rust.
+Build the playback engine on top of the `BagReader` trait from Phase 1.
 
-## Index Manager
+## 2.1 Index Manager
 
-- [ ] Build message index from bag metadata (timestamp, topic, offset)
-- [ ] Support multi-bag indexing
+Consumes `BagReader` to build a searchable index of all messages.
+
+- [ ] Build message index from `BagMetadata` and message iteration (timestamp, topic, offset)
+- [ ] Support multi-bag indexing (merge-sort by timestamp)
 - [ ] Provide efficient time-based lookups (binary search)
 - [ ] Memory-efficient index (~100 bytes per message entry)
 
-## Message Cache
+## 2.2 Message Cache
+
+Pure in-memory component, no FFI dependency.
 
 - [ ] Implement LRU cache for decoded messages
 - [ ] Thread-safe concurrent read/write
 - [ ] Window-based eviction strategy for streaming playback
 - [ ] Configurable cache size
 
-## Bag Worker
+## 2.3 Bag Worker
+
+Background thread that uses `BagReader` to stream messages into the cache.
 
 - [ ] Background I/O thread for streaming messages from disk
 - [ ] Request-based architecture (range reads, seek requests)
 - [ ] Async message delivery via channels
 - [ ] Graceful shutdown and error propagation
 
-## Virtual Timeline
+## 2.4 Virtual Timeline
+
+Pure playback logic, no FFI dependency.
 
 - [ ] Handle rewind operations by creating timeline segments
 - [ ] Track segment IDs for frame disambiguation
 - [ ] Support loop playback
 - [ ] Playback speed control
 
-## Message Type Registry
+## 2.5 Message Type Registry
+
+Populated from `BagMetadata::topics`, then used for filtering.
 
 - [ ] Dynamic type discovery from bag metadata
 - [ ] Topic and type filtering

@@ -2,7 +2,7 @@
 
 Comprehensive test coverage and CI/CD.
 
-## Unit Tests (per-crate `#[cfg(test)]`)
+## 5.1 Unit Tests (per-crate `#[cfg(test)]`)
 
 - [ ] Index manager: construction, multi-bag, time queries, boundary conditions
 - [ ] Message cache: insert/retrieve, LRU eviction, thread safety, window eviction
@@ -10,7 +10,7 @@ Comprehensive test coverage and CI/CD.
 - [ ] Virtual timeline: segment creation, rewind, loop, speed control
 - [ ] Message type registry: registration, filtering, thread safety
 
-## Integration Tests (`rosbag-deck-tests` crate, nextest)
+## 5.2 Integration Tests (`rosbag-deck-tests` crate, nextest)
 
 - [ ] End-to-end: load bag, build index, play back, verify message order
 - [ ] CLI: `play` and `info` subcommands produce correct output
@@ -18,14 +18,14 @@ Comprehensive test coverage and CI/CD.
 - [ ] Large bag handling (GB+ sizes, streaming without OOM)
 - [ ] Storage format compatibility (sqlite3, mcap)
 
-## Performance Benchmarks
+## 5.3 Performance Benchmarks
 
 - [ ] Index build time for bags with 1M+ messages
 - [ ] Cache hit/miss rates for various access patterns
 - [ ] Message throughput (messages/sec)
 - [ ] Python callback overhead
 
-## CI/CD
+## 5.4 CI/CD
 
 - [ ] GitHub Actions workflow: build, test, clippy, rustfmt
 - [ ] Coverage reporting (cargo-llvm-cov or tarpaulin)
