@@ -1,0 +1,17 @@
+[package]
+name = "rosbag-deck-tests"
+description = "Integration tests for rosbag-deck"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[test]]
+name = "integration"
+path = "tests/integration.rs"
+
+[dev-dependencies]
+rosbag-deck = { workspace = true }
+rstest = { workspace = true }
+tempfile = { workspace = true }
+assert_cmd = { workspace = true }

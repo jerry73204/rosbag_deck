@@ -1,0 +1,15 @@
+[package]
+name = "rosbag-deck-python"
+description = "Python bindings for rosbag-deck"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "rosbag_deck"
+crate-type = ["cdylib"]
+
+[dependencies]
+rosbag-deck = { workspace = true }
+pyo3 = { workspace = true }

@@ -1,21 +1,16 @@
 [project]
-name = "rosbag_deck_workspace"
+name = "rosbag-deck-workspace"
 version = "0.1.0"
-description = "Add your description here"
-authors = [
-    { name = "aeon", email = "jerry73204@gmail.com" }
-]
-dependencies = []
-readme = "README.md"
+description = "Interactive ROS 2 bag player with tape deck-style controls"
+authors = [{ name = "aeon", email = "jerry73204@gmail.com" }]
 requires-python = ">= 3.10"
+license = { text = "MIT" }
 
-[tool.rye]
+[tool.uv]
 managed = true
-virtual = true
-dev-dependencies = []
 
-[tool.rye.workspace]
-members = [
-  "rosbag_deck_python",
-  "rosbag_deck_tui",
-]
+[tool.uv.workspace]
+members = ["packages/rosbag-deck-python"]
+
+[tool.uv.sources]
+rosbag-deck = { workspace = true }

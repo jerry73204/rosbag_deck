@@ -1,0 +1,15 @@
+[package]
+name = "rosbag-deck-ffi"
+description = "FFI bindings to ROS 2 libraries (rosbag2, etc.)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+# TODO: Add rosbag2 FFI bindings (bindgen or manual)
+# [build-dependencies]
+# bindgen = "0.71"

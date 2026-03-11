@@ -6,113 +6,121 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 RosBag Deck is an interactive ROS 2 bag player with tape deck-style controls. It provides frame-level precision playback and handles large bag files efficiently through a streaming architecture.
 
+The project is written in Rust with Python bindings via PyO3.
+
 ## Build Commands
 
-### Full Build (All Packages)
+### Rust (Cargo)
 ```bash
+# Build all workspace members
+cargo build
+
+# Build a specific package
+cargo build -p rosbag-deck
+cargo build -p rosbag-deck-cli
+cargo build -p rosbag-deck-python
+cargo build -p rosbag-deck-ffi
+```
+
+### Colcon (ROS 2 integration via colcon-cargo-ros2)
+```bash
+# Full build
 colcon build
+
+# Individual package
+colcon build --packages-select rosbag_deck
 ```
 
-### Individual Package Builds
+### Python
 ```bash
-# Core C++ library
-colcon build --packages-select rosbag_deck_core
+# Install Python dependencies
+uv sync
 
-# ROS 2 node
-colcon build --packages-select rosbag_deck_node
-
-# Python bindings
-colcon build --packages-select rosbag_deck_python
-
-# Terminal UI
-colcon build --packages-select rosbag_deck_tui
-```
-
-### Python Development
-```bash
-# Install Python dependencies (from workspace root)
-rye sync
-
-# Build Python packages with Rye
-cd rosbag_deck_python && rye build
-cd rosbag_deck_tui && rye build
+# Build Python bindings (via maturin)
+cd packages/rosbag-deck-python && maturin develop
 ```
 
 ## Linting
 
-### C++ Packages
-Linting is integrated into the CMake build process via `ament_lint_auto`. It runs automatically during build.
-
-### Python Packages
 ```bash
-# Run from individual Python package directories
-rye lint
+# Rust
+cargo clippy --workspace
+cargo fmt --check
+
+# Python
+uv run ruff check packages/rosbag-deck-python/
 ```
 
 ## Testing
 
-No test suites are currently implemented. When adding tests:
-- C++ tests should use gtest with ament_cmake_gtest
-- Python tests should use pytest
+```bash
+# Rust tests (nextest)
+cargo nextest run
+
+# Python tests
+uv run pytest packages/rosbag-deck-python/ -v
+
+# Full suite via justfile
+just test
+```
 
 ## Architecture
 
 ### Package Dependencies
 ```
-rosbag_deck_interface (msgs/srvs)
+rosbag-deck-ffi (FFI to ROS 2: rosbag2, etc.)
     ↓
-rosbag_deck_core (C++ library)
-    ↓         ↓
-rosbag_deck_node  rosbag_deck_python (via CFFI)
-    ↓                    ↓
-    └─── rosbag_deck_tui ───┘
+rosbag-deck (Rust core library)
+    ↓              ↓
+rosbag-deck-cli   rosbag-deck-python (PyO3)
+    (CLI + TUI)
+
+rosbag-deck-tests (integration tests)
 ```
+
+### Packages
+
+| Package | Path | Description |
+|---------|------|-------------|
+| `rosbag-deck` | `packages/rosbag-deck/` | Core library: indexing, caching, streaming, virtual timeline |
+| `rosbag-deck-cli` | `packages/rosbag-deck-cli/` | CLI + optional ratatui TUI |
+| `rosbag-deck-python` | `packages/rosbag-deck-python/` | PyO3 Python bindings |
+| `rosbag-deck-ffi` | `packages/rosbag-deck-ffi/` | FFI bindings to ROS 2 C/C++ libraries |
+| `rosbag-deck-tests` | `packages/testing/rosbag-deck-tests/` | Integration tests (nextest) |
 
 ### Key Design Patterns
 
-1. **Streaming Architecture**: The core library streams messages from disk rather than loading entire bags into memory. This is critical for handling large bag files.
-
-2. **Virtual Timeline System**: Handles rewind operations by creating timeline segments. Frame IDs are modified to include segment information (e.g., `base_link` becomes `base_link_segment_1`).
-
-3. **Thread Safety**: All core components use mutex protection. The BagWorker runs on a separate thread for I/O operations.
-
-4. **C API for FFI**: `rosbag_deck_core` exposes a C API (`rosbag_deck_api.h`) for Python bindings via CFFI.
-
-### Important Files
-
-- Core API: `rosbag_deck_core/include/rosbag_deck_core/rosbag_deck_api.h`
-- Python bindings: `rosbag_deck_python/src/rosbag_deck_python/deck.py`
-- Node implementation: `rosbag_deck_node/src/rosbag_deck_node.cpp`
-- TUI implementation: `rosbag_deck_tui/src/rosbag_deck_tui/app.py`
-
-## Development Notes
-
-### Current Limitations
-- Hardcoded to work with `sensor_msgs/PointCloud2` messages only
-- No CI/CD pipeline configured
-- No automated tests
-
-### When Modifying Core Library
-1. Update the C API in `rosbag_deck_api.h` if adding new functionality
-2. Regenerate Python bindings: `cd rosbag_deck_python && python build_cffi.py`
-3. Update both the node and Python wrapper to expose new features
+1. **Streaming Architecture**: Stream messages from disk rather than loading entire bags into memory.
+2. **Virtual Timeline System**: Handle rewind operations by creating timeline segments.
+3. **Thread Safety**: All core components use safe Rust concurrency primitives.
+4. **FFI for ROS 2**: Reuse rosbag2 via FFI rather than reimplementing bag format parsing.
 
 ### ROS 2 Integration
-- The project uses ROS 2 Humble or later
-- All ROS communication goes through `rosbag_deck_interface` definitions
-- Status is published at 10Hz by default
-- Services use standard ROS 2 request/response patterns
+
+- Packages declare `<build_type>ament_cargo</build_type>` in package.xml
+- Built via colcon-cargo-ros2 plugin
+- ROS 2 Humble or later
 
 ### Python Package Management
-- Uses Rye workspace at the root level
-- Individual `pyproject.toml` files for each Python package
-- CFFI bindings are built during colcon build, not Rye build
 
-### Environment Setup
-- Rye is used to manage the project. Run `rye sync` to setup the virtual environment.
+- Uses UV (not pip/rye) for workspace management
+- Python bindings built with maturin (PyO3)
+- Root `pyproject.toml` defines UV workspace
 
-### Build Helpers
-- Run `build.sh` to re-build the whole Colcon project.
+### Build Helpers (justfile)
 
-### Code Formatting
-- Use clang-format to format C/C++ code. Be aware that it might break the code.
+```bash
+just build    # Build with dev-release profile (release + debug info/assertions)
+just check    # clippy + fmt check
+just test     # cargo nextest run
+just format   # cargo fmt
+just clean    # cargo clean + remove colcon dirs
+```
+
+The default Cargo profile is `dev-release` (inherits `release` with debug, debug-assertions, overflow-checks enabled).
+
+## Development Principles
+
+- If a feature or work is not done yet, always leave TODO comments. Don't generate dummy values or any kind of silent error.
+- Use `thiserror` for library error types, `anyhow` for application error handling.
+- Prefer channels over shared mutable state for thread communication.

@@ -10,7 +10,21 @@
 /install/
 /log/
 
+# rust
+/target/
+
 # python
 .eggs/
 __pycache__/
 *.egg-info/
+.venv/
+*.so
+*.pyd
+
+# coverage
+*.coverage
+htmlcov/
+
+# test
+test_logs/
+junit.xml
