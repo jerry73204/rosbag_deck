@@ -32,6 +32,6 @@ Implement `BagReader` via FFI to rosbag2, for reading bags produced by ROS 2.
 ## Criteria
 
 - [x] `cargo build` succeeds for all workspace members
-- [ ] `colcon build` succeeds via ament_cargo
+- [x] `colcon build` succeeds via ament_cargo
 - [ ] FFI crate can open a real ROS 2 bag file and iterate messages
 - [x] Core library depends only on `BagReader` trait, not on FFI crate directly

@@ -12,6 +12,15 @@ pub enum Error {
 
     #[error("FFI error: {0}")]
     Ffi(String),
+
+    #[error("worker error (bag {bag_id}): {message}")]
+    Worker { bag_id: u16, message: String },
+
+    #[error("no bags provided")]
+    NoBags,
+
+    #[error("playback stopped")]
+    Stopped,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

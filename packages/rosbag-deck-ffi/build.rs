@@ -83,7 +83,9 @@ fn main() {
             builder = builder.clang_arg(format!("-I{}", dir.display()));
         }
 
-        let bindings = builder.generate().expect("bindgen failed to generate bindings");
+        let bindings = builder
+            .generate()
+            .expect("bindgen failed to generate bindings");
 
         // Write into the source tree so it can be checked into git.
         let out_path = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap()).join("src/sys.rs");

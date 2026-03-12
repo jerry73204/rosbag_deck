@@ -40,3 +40,53 @@ pub struct RawMessage {
     /// CDR-serialized message data.
     pub data: Vec<u8>,
 }
+
+/// A message returned from the playback engine with playback metadata.
+#[derive(Debug, Clone)]
+pub struct TimedMessage {
+    /// The underlying raw message.
+    pub message: RawMessage,
+    /// Timeline segment ID at the time this message was produced.
+    pub segment_id: u64,
+}
+
+/// Playback mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlaybackMode {
+    /// Messages are paced according to their recorded timestamps.
+    RealTime,
+    /// Messages are delivered as fast as possible.
+    BestEffort,
+}
+
+/// Playback state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlaybackState {
+    Stopped,
+    Playing,
+    Paused,
+}
+
+/// Configuration for the `Deck` playback engine.
+#[derive(Debug, Clone)]
+pub struct DeckConfig {
+    /// Maximum number of entries in the visited index (default 50,000).
+    pub visited_index_limit: usize,
+    /// Number of milestone intervals per bag (default 1000).
+    pub milestone_count: usize,
+    /// Maximum bytes for the message cache (default 256 MB).
+    pub cache_max_bytes: usize,
+    /// Number of messages to prefetch ahead (default 1000).
+    pub prefetch_ahead: usize,
+}
+
+impl Default for DeckConfig {
+    fn default() -> Self {
+        Self {
+            visited_index_limit: 50_000,
+            milestone_count: 1000,
+            cache_max_bytes: 256 * 1024 * 1024,
+            prefetch_ahead: 1000,
+        }
+    }
+}
