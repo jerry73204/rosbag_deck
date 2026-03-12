@@ -114,6 +114,30 @@ impl BagReader for Rosbag2Reader {
         }
         Ok(())
     }
+
+    fn set_filter(&mut self, topics: &[String]) -> Result<()> {
+        if topics.is_empty() {
+            return self.reset_filter();
+        }
+        let c_strings: Vec<CString> = topics
+            .iter()
+            .map(|t| CString::new(t.as_str()).unwrap())
+            .collect();
+        let ptrs: Vec<*const core::ffi::c_char> = c_strings.iter().map(|s| s.as_ptr()).collect();
+        let rc = unsafe { sys::rosbag2_reader_set_filter(self.handle, ptrs.as_ptr(), ptrs.len()) };
+        if rc != 0 {
+            return Err(Error::Ffi(last_error()));
+        }
+        Ok(())
+    }
+
+    fn reset_filter(&mut self) -> Result<()> {
+        let rc = unsafe { sys::rosbag2_reader_reset_filter(self.handle) };
+        if rc != 0 {
+            return Err(Error::Ffi(last_error()));
+        }
+        Ok(())
+    }
 }
 
 /// Read metadata from an open reader handle.

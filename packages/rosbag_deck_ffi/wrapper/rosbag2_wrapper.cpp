@@ -1,6 +1,7 @@
 #include "rosbag2_wrapper.h"
 
 #include <rosbag2_cpp/reader.hpp>
+#include <rosbag2_storage/storage_filter.hpp>
 #include <rosbag2_storage/storage_options.hpp>
 
 #include <cstdlib>
@@ -179,6 +180,41 @@ void rosbag2_metadata_free(Rosbag2Metadata *meta) {
     meta->topics = nullptr;
     meta->storage_identifier = nullptr;
     meta->topic_count = 0;
+}
+
+int rosbag2_reader_set_filter(Rosbag2Reader *reader,
+                              const char **topics, size_t topic_count) {
+    if (!reader) {
+        set_error("null reader");
+        return -1;
+    }
+    try {
+        rosbag2_storage::StorageFilter filter;
+        for (size_t i = 0; i < topic_count; ++i) {
+            if (topics[i]) {
+                filter.topics.emplace_back(topics[i]);
+            }
+        }
+        reader->reader.set_filter(filter);
+        return 0;
+    } catch (const std::exception &e) {
+        set_error(std::string("set_filter failed: ") + e.what());
+        return -1;
+    }
+}
+
+int rosbag2_reader_reset_filter(Rosbag2Reader *reader) {
+    if (!reader) {
+        set_error("null reader");
+        return -1;
+    }
+    try {
+        reader->reader.reset_filter();
+        return 0;
+    } catch (const std::exception &e) {
+        set_error(std::string("reset_filter failed: ") + e.what());
+        return -1;
+    }
 }
 
 const char *rosbag2_last_error(void) {

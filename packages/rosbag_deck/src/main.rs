@@ -34,9 +34,15 @@ enum Command {
         /// Playback speed multiplier.
         #[arg(long, short, default_value_t = 1.0)]
         rate: f64,
-        /// Topic filter (comma-separated). If omitted, all topics are played.
-        #[arg(long, short, value_delimiter = ',')]
+        /// Topic whitelist (space or comma-separated).
+        #[arg(long, short, value_delimiter = ',', num_args = 1..)]
         topics: Option<Vec<String>>,
+        /// Include topics matching a regex pattern.
+        #[arg(long, value_name = "PATTERN")]
+        regex: Option<String>,
+        /// Exclude topics matching a name or regex pattern.
+        #[arg(long, short, value_name = "PATTERN")]
+        exclude: Option<String>,
         /// Disable TUI, run headless playback.
         #[arg(long)]
         no_tui: bool,
@@ -57,6 +63,8 @@ fn main() -> anyhow::Result<()> {
             storage,
             rate,
             topics,
+            regex,
+            exclude,
             no_tui,
             r#loop,
         } => {
@@ -65,6 +73,8 @@ fn main() -> anyhow::Result<()> {
                 storage,
                 rate,
                 topics,
+                regex,
+                exclude,
                 looping: r#loop,
             };
 

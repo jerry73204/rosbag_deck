@@ -19,6 +19,8 @@ pub enum WorkerCommand {
     Seek { timestamp_ns: i64 },
     /// Read the next `count` messages into the cache.
     Prefetch { count: usize },
+    /// Apply a topic filter at the storage level. Empty vec clears filter.
+    SetFilter { topics: Vec<String> },
     /// Shut down the worker thread.
     Shutdown,
 }
@@ -137,6 +139,19 @@ fn worker_loop(
             }
             WorkerCommand::Prefetch { count } => {
                 read_into_cache(bag_id, &mut reader, &index, &cache, count, &event_tx);
+            }
+            WorkerCommand::SetFilter { topics } => {
+                let result = if topics.is_empty() {
+                    reader.reset_filter()
+                } else {
+                    reader.set_filter(&topics)
+                };
+                if let Err(e) = result {
+                    let _ = event_tx.send(WorkerEvent::Error {
+                        bag_id,
+                        message: format!("set_filter failed: {e}"),
+                    });
+                }
             }
             WorkerCommand::Shutdown => break,
         }

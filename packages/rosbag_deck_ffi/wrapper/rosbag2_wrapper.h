@@ -75,6 +75,17 @@ int rosbag2_reader_get_metadata(const Rosbag2Reader *reader, Rosbag2Metadata *me
 /* Free memory allocated by rosbag2_reader_get_metadata(). */
 void rosbag2_metadata_free(Rosbag2Metadata *meta);
 
+/*
+ * Set a topic filter (whitelist). Only messages on these topics will be
+ * returned by read_next(). Pass topic_count == 0 to clear the filter.
+ * Returns 0 on success, -1 on error.
+ */
+int rosbag2_reader_set_filter(Rosbag2Reader *reader,
+                              const char **topics, size_t topic_count);
+
+/* Clear any topic filter. Returns 0 on success, -1 on error. */
+int rosbag2_reader_reset_filter(Rosbag2Reader *reader);
+
 /* Returns the last error message, or NULL if no error. Thread-local. */
 const char *rosbag2_last_error(void);
 

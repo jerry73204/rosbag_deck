@@ -112,5 +112,15 @@ unsafe extern "C" {
     pub fn rosbag2_metadata_free(meta: *mut Rosbag2Metadata);
 }
 unsafe extern "C" {
+    pub fn rosbag2_reader_set_filter(
+        reader: *mut Rosbag2Reader,
+        topics: *const *const ::core::ffi::c_char,
+        topic_count: usize,
+    ) -> ::core::ffi::c_int;
+}
+unsafe extern "C" {
+    pub fn rosbag2_reader_reset_filter(reader: *mut Rosbag2Reader) -> ::core::ffi::c_int;
+}
+unsafe extern "C" {
     pub fn rosbag2_last_error() -> *const ::core::ffi::c_char;
 }

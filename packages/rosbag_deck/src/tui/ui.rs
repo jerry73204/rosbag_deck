@@ -1,6 +1,6 @@
 use ratatui::{
     prelude::*,
-    widgets::{Block, Borders, Gauge, Paragraph, Row, Table},
+    widgets::{Block, Borders, Clear, Gauge, List, ListItem, Paragraph, Row, Table},
 };
 
 use rosbag_deck_core::PlaybackState;
@@ -22,6 +22,11 @@ pub fn draw(frame: &mut Frame, app: &App) {
     draw_transport(frame, app, chunks[1]);
     draw_messages(frame, app, chunks[2]);
     draw_help(frame, app, chunks[3]);
+
+    // Topic panel overlay.
+    if let Some(ref panel) = app.topic_panel {
+        draw_topic_panel(frame, panel, area);
+    }
 }
 
 fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
@@ -127,16 +132,75 @@ fn draw_messages(frame: &mut Frame, app: &App, area: Rect) {
 }
 
 fn draw_help(frame: &mut Frame, app: &App, area: Rect) {
-    let text = if let Some(ref input) = app.seek_input {
+    let text = if app.topic_panel.is_some() {
+        "↑↓:Navigate  Space:Toggle  a:All  n:None  /:Search  Enter:Apply  Esc:Cancel".into()
+    } else if let Some(ref input) = app.seek_input {
         format!("Seek to: {input}_ (Enter to confirm, Esc to cancel)")
     } else if let Some(ref msg) = app.status_message {
         msg.clone()
     } else {
-        "Space:Play/Pause  s:Stop  ←→:Step  ±:Speed  g:Seek  o:Loop  Home/End  q:Quit".into()
+        "Space:Play/Pause  s:Stop  ←→:Step  ±:Speed  g:Seek  o:Loop  t:Topics  q:Quit".into()
     };
 
     let paragraph = Paragraph::new(text).style(Style::default().fg(Color::DarkGray));
     frame.render_widget(paragraph, area);
+}
+
+fn draw_topic_panel(frame: &mut Frame, panel: &super::TopicPanel, area: Rect) {
+    // Center the panel, taking up to 60% width and 80% height.
+    let panel_w = (area.width as f64 * 0.6).clamp(30.0, 60.0) as u16;
+    let panel_h = (area.height as f64 * 0.8).clamp(10.0, 40.0) as u16;
+    let x = area.x + (area.width.saturating_sub(panel_w)) / 2;
+    let y = area.y + (area.height.saturating_sub(panel_h)) / 2;
+    let panel_area = Rect::new(x, y, panel_w.min(area.width), panel_h.min(area.height));
+
+    frame.render_widget(Clear, panel_area);
+
+    let visible = panel.visible_topics();
+
+    let title = if let Some(ref search) = panel.search {
+        format!(" Topics (/{search}) ")
+    } else {
+        format!(" Topics ({}/{}) ", panel.selected.len(), panel.topics.len())
+    };
+
+    let block = Block::default()
+        .title(title)
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Yellow));
+
+    let inner = block.inner(panel_area);
+
+    // Scroll so cursor is visible.
+    let inner_height = inner.height as usize;
+    let scroll_offset = if panel.cursor >= inner_height {
+        panel.cursor - inner_height + 1
+    } else {
+        0
+    };
+
+    let items: Vec<ListItem> = visible
+        .iter()
+        .enumerate()
+        .skip(scroll_offset)
+        .take(inner_height)
+        .map(|(i, &topic)| {
+            let check = if panel.selected.contains(topic) {
+                "[x]"
+            } else {
+                "[ ]"
+            };
+            let style = if i == panel.cursor {
+                Style::default().fg(Color::Black).bg(Color::Cyan)
+            } else {
+                Style::default()
+            };
+            ListItem::new(format!("{check} {topic}")).style(style)
+        })
+        .collect();
+
+    let list = List::new(items).block(block);
+    frame.render_widget(list, panel_area);
 }
 
 fn format_duration_ns(ns: i64) -> String {

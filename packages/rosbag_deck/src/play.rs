@@ -1,5 +1,6 @@
 use std::{collections::HashSet, path::PathBuf};
 
+use regex::Regex;
 use rosbag_deck_core::{BagReader, Deck, DeckConfig, PlaybackMode};
 use rosbag_deck_ffi::Rosbag2Reader;
 
@@ -8,6 +9,8 @@ pub struct PlayOpts {
     pub storage: String,
     pub rate: f64,
     pub topics: Option<Vec<String>>,
+    pub regex: Option<String>,
+    pub exclude: Option<String>,
     pub looping: bool,
 }
 
@@ -33,11 +36,57 @@ pub fn open_deck(opts: &PlayOpts) -> anyhow::Result<Deck> {
     deck.set_speed(opts.rate);
     deck.set_looping(opts.looping);
 
-    if let Some(ref topics) = opts.topics {
-        deck.set_topic_filter(Some(topics.iter().cloned().collect::<HashSet<_>>()));
+    let filter = resolve_topic_filter(
+        &deck.topic_names(),
+        opts.topics.as_deref(),
+        opts.regex.as_deref(),
+        opts.exclude.as_deref(),
+    )?;
+    if let Some(filter) = filter {
+        deck.set_topic_filter(Some(filter));
     }
 
     Ok(deck)
+}
+
+/// Resolve `--topics`, `--regex`, `--exclude` into a concrete set of topic names.
+///
+/// Returns `None` if no filter is specified (all topics accepted).
+fn resolve_topic_filter(
+    all_topics: &[String],
+    topics: Option<&[String]>,
+    regex_pattern: Option<&str>,
+    exclude_pattern: Option<&str>,
+) -> anyhow::Result<Option<HashSet<String>>> {
+    // Start with the explicit whitelist, or all topics if none specified.
+    let mut accepted: HashSet<String> = if let Some(topics) = topics {
+        topics.iter().cloned().collect()
+    } else if regex_pattern.is_some() || exclude_pattern.is_some() {
+        // If regex/exclude given but no explicit whitelist, start with all topics.
+        all_topics.iter().cloned().collect()
+    } else {
+        return Ok(None); // No filter at all.
+    };
+
+    // Add topics matching --regex.
+    if let Some(pattern) = regex_pattern {
+        let re =
+            Regex::new(pattern).map_err(|e| anyhow::anyhow!("invalid --regex pattern: {e}"))?;
+        for topic in all_topics {
+            if re.is_match(topic) {
+                accepted.insert(topic.clone());
+            }
+        }
+    }
+
+    // Remove topics matching --exclude.
+    if let Some(pattern) = exclude_pattern {
+        let re =
+            Regex::new(pattern).map_err(|e| anyhow::anyhow!("invalid --exclude pattern: {e}"))?;
+        accepted.retain(|topic| !re.is_match(topic));
+    }
+
+    Ok(Some(accepted))
 }
 
 /// Headless playback — prints messages to stdout.

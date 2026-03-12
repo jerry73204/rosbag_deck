@@ -47,6 +47,11 @@ impl MessageTypeRegistry {
         self.topics.get(name)
     }
 
+    /// Returns the current topic filter, if any.
+    pub fn current_filter(&self) -> Option<&HashSet<String>> {
+        self.filter.as_ref()
+    }
+
     /// All known topic names.
     pub fn topic_names(&self) -> impl Iterator<Item = &str> {
         self.topics.keys().map(|s| s.as_str())

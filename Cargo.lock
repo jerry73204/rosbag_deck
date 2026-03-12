@@ -1113,6 +1113,7 @@ dependencies = [
  "clap",
  "crossterm",
  "ratatui",
+ "regex",
  "rosbag_deck_core",
  "rosbag_deck_ffi",
  "tracing",

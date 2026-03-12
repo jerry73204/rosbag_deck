@@ -243,7 +243,28 @@ impl Deck {
     }
 
     pub fn set_topic_filter(&mut self, filter: Option<HashSet<String>>) {
+        // Push storage-level filter to workers for I/O efficiency.
+        let worker_topics: Vec<String> = match &filter {
+            Some(set) => set.iter().cloned().collect(),
+            None => vec![], // empty = clear filter
+        };
+        for worker in &self.workers {
+            let _ = worker.send(WorkerCommand::SetFilter {
+                topics: worker_topics.clone(),
+            });
+        }
+        // Update registry for immediate delivery-side filtering.
         self.registry.set_filter(filter);
+    }
+
+    /// Returns an iterator over all known topic names.
+    pub fn topic_names(&self) -> Vec<String> {
+        self.registry.topic_names().map(|s| s.to_string()).collect()
+    }
+
+    /// Returns the current topic filter (None = all topics accepted).
+    pub fn topic_filter(&self) -> Option<&HashSet<String>> {
+        self.registry.current_filter()
     }
 
     // -- Playback tick --

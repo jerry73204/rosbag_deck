@@ -1,7 +1,7 @@
 mod ui;
 
 use std::{
-    collections::VecDeque,
+    collections::{HashSet, VecDeque},
     time::{Duration, Instant},
 };
 
@@ -21,6 +21,69 @@ use crate::play::{self, PlayOpts};
 /// Maximum number of messages to keep in the log for display.
 const MESSAGE_LOG_CAPACITY: usize = 200;
 
+/// State for the interactive topic selection panel.
+pub struct TopicPanel {
+    /// All topic names, sorted.
+    pub topics: Vec<String>,
+    /// Which topics are selected (checked).
+    pub selected: HashSet<String>,
+    /// Cursor position in the topic list.
+    pub cursor: usize,
+    /// Search/filter string.
+    pub search: Option<String>,
+}
+
+impl TopicPanel {
+    fn new(deck: &rosbag_deck_core::Deck) -> Self {
+        let mut topics = deck.topic_names();
+        topics.sort();
+        // Initialize selection from current filter, or all topics if no filter.
+        let selected = match deck.topic_filter() {
+            Some(filter) => filter.clone(),
+            None => topics.iter().cloned().collect(),
+        };
+        Self {
+            topics,
+            selected,
+            cursor: 0,
+            search: None,
+        }
+    }
+
+    /// Topics visible after search filter.
+    pub fn visible_topics(&self) -> Vec<&str> {
+        match &self.search {
+            None => self.topics.iter().map(|s| s.as_str()).collect(),
+            Some(query) => self
+                .topics
+                .iter()
+                .filter(|t| t.contains(query.as_str()))
+                .map(|s| s.as_str())
+                .collect(),
+        }
+    }
+
+    fn toggle_current(&mut self) {
+        let visible = self.visible_topics();
+        if let Some(&topic) = visible.get(self.cursor) {
+            let topic = topic.to_string();
+            if self.selected.contains(&topic) {
+                self.selected.remove(&topic);
+            } else {
+                self.selected.insert(topic);
+            }
+        }
+    }
+
+    fn select_all(&mut self) {
+        self.selected = self.topics.iter().cloned().collect();
+    }
+
+    fn deselect_all(&mut self) {
+        self.selected.clear();
+    }
+}
+
 /// TUI application state.
 pub struct App {
     pub deck: rosbag_deck_core::Deck,
@@ -28,6 +91,7 @@ pub struct App {
     pub should_quit: bool,
     pub seek_input: Option<String>,
     pub status_message: Option<String>,
+    pub topic_panel: Option<TopicPanel>,
 }
 
 /// A single entry in the message log.
@@ -56,6 +120,7 @@ impl App {
             should_quit: false,
             seek_input: None,
             status_message: None,
+            topic_panel: None,
         })
     }
 
@@ -87,7 +152,82 @@ impl App {
     }
 
     fn handle_key(&mut self, key: KeyEvent) {
-        // If in seek input mode, handle typing.
+        // Topic panel mode.
+        if let Some(ref mut panel) = self.topic_panel {
+            // If searching, handle search input first.
+            if let Some(ref mut search) = panel.search {
+                match key.code {
+                    KeyCode::Esc => {
+                        panel.search = None;
+                    }
+                    KeyCode::Backspace => {
+                        search.pop();
+                        if search.is_empty() {
+                            panel.search = None;
+                        }
+                    }
+                    KeyCode::Char(c) => {
+                        search.push(c);
+                        // Clamp cursor to visible range.
+                        let visible_len = panel.visible_topics().len();
+                        if panel.cursor >= visible_len && visible_len > 0 {
+                            panel.cursor = visible_len - 1;
+                        }
+                    }
+                    KeyCode::Enter => {
+                        panel.search = None;
+                    }
+                    _ => {}
+                }
+                return;
+            }
+
+            match key.code {
+                KeyCode::Esc | KeyCode::Char('t') => {
+                    // Cancel — discard changes.
+                    self.topic_panel = None;
+                }
+                KeyCode::Enter => {
+                    // Apply filter.
+                    let selected = panel.selected.clone();
+                    let all_count = panel.topics.len();
+                    self.topic_panel = None;
+                    if selected.len() == all_count {
+                        // All selected = no filter.
+                        self.deck.set_topic_filter(None);
+                    } else {
+                        self.deck.set_topic_filter(Some(selected));
+                    }
+                }
+                KeyCode::Up | KeyCode::Char('k') => {
+                    if panel.cursor > 0 {
+                        panel.cursor -= 1;
+                    }
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    let len = panel.visible_topics().len();
+                    if panel.cursor + 1 < len {
+                        panel.cursor += 1;
+                    }
+                }
+                KeyCode::Char(' ') => {
+                    panel.toggle_current();
+                }
+                KeyCode::Char('a') => {
+                    panel.select_all();
+                }
+                KeyCode::Char('n') => {
+                    panel.deselect_all();
+                }
+                KeyCode::Char('/') => {
+                    panel.search = Some(String::new());
+                }
+                _ => {}
+            }
+            return;
+        }
+
+        // Seek input mode.
         if let Some(ref mut input) = self.seek_input {
             match key.code {
                 KeyCode::Enter => {
@@ -115,6 +255,7 @@ impl App {
             return;
         }
 
+        // Normal mode.
         match key.code {
             KeyCode::Char('q') | KeyCode::Char('Q') => self.should_quit = true,
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -142,6 +283,9 @@ impl App {
             }
             KeyCode::Char('o') | KeyCode::Char('O') => {
                 self.deck.set_looping(!self.deck.looping());
+            }
+            KeyCode::Char('t') | KeyCode::Char('T') => {
+                self.topic_panel = Some(TopicPanel::new(&self.deck));
             }
             KeyCode::Home => {
                 self.deck.seek_to_ratio(0.0);
