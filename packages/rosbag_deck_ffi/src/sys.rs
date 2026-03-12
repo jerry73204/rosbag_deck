@@ -121,6 +121,37 @@ unsafe extern "C" {
 unsafe extern "C" {
     pub fn rosbag2_reader_reset_filter(reader: *mut Rosbag2Reader) -> ::core::ffi::c_int;
 }
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct Rosbag2Writer {
+    _unused: [u8; 0],
+}
+unsafe extern "C" {
+    pub fn rosbag2_writer_open(
+        uri: *const ::core::ffi::c_char,
+        storage_id: *const ::core::ffi::c_char,
+    ) -> *mut Rosbag2Writer;
+}
+unsafe extern "C" {
+    pub fn rosbag2_writer_close(writer: *mut Rosbag2Writer);
+}
+unsafe extern "C" {
+    pub fn rosbag2_writer_create_topic(
+        writer: *mut Rosbag2Writer,
+        name: *const ::core::ffi::c_char,
+        type_name: *const ::core::ffi::c_char,
+        serialization_format: *const ::core::ffi::c_char,
+    ) -> ::core::ffi::c_int;
+}
+unsafe extern "C" {
+    pub fn rosbag2_writer_write(
+        writer: *mut Rosbag2Writer,
+        topic: *const ::core::ffi::c_char,
+        timestamp_ns: i64,
+        data: *const u8,
+        data_len: usize,
+    ) -> ::core::ffi::c_int;
+}
 unsafe extern "C" {
     pub fn rosbag2_last_error() -> *const ::core::ffi::c_char;
 }

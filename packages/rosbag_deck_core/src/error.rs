@@ -19,6 +19,9 @@ pub enum Error {
     #[error("no bags provided")]
     NoBags,
 
+    #[error("write failed: {0}")]
+    Write(String),
+
     #[error("playback stopped")]
     Stopped,
 }

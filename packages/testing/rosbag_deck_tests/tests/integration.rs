@@ -25,5 +25,8 @@ mod cli;
 #[path = "integration/edge_cases.rs"]
 mod edge_cases;
 
+#[path = "integration/bag_edit.rs"]
+mod bag_edit;
+
 #[path = "integration/bag_large.rs"]
 mod bag_large;

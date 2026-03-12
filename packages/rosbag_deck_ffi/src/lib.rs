@@ -10,6 +10,7 @@ use std::{
 use rosbag_deck_core::{
     reader::BagReader,
     types::{BagMetadata, RawMessage, TopicInfo},
+    writer::BagWriter,
     Error, Result,
 };
 
@@ -135,6 +136,97 @@ impl BagReader for Rosbag2Reader {
         let rc = unsafe { sys::rosbag2_reader_reset_filter(self.handle) };
         if rc != 0 {
             return Err(Error::Ffi(last_error()));
+        }
+        Ok(())
+    }
+}
+
+/// BagWriter implementation backed by rosbag2_cpp via C FFI.
+pub struct Rosbag2Writer {
+    handle: *mut sys::Rosbag2Writer,
+}
+
+// The C++ writer is single-threaded but we guarantee exclusive access via &mut self.
+unsafe impl Send for Rosbag2Writer {}
+
+impl Rosbag2Writer {
+    /// Open a bag file for writing.
+    ///
+    /// `storage_id` selects the storage backend: `"sqlite3"` or `"mcap"`.
+    pub fn open(path: &Path, storage_id: &str) -> Result<Self> {
+        let uri = CString::new(
+            path.to_str()
+                .ok_or_else(|| Error::Open("path contains invalid UTF-8".into()))?,
+        )
+        .map_err(|e| Error::Open(format!("path contains null byte: {e}")))?;
+
+        let sid = CString::new(storage_id)
+            .map_err(|e| Error::Open(format!("storage_id contains null byte: {e}")))?;
+
+        let handle = unsafe { sys::rosbag2_writer_open(uri.as_ptr(), sid.as_ptr()) };
+        if handle.is_null() {
+            return Err(Error::Open(last_error()));
+        }
+
+        Ok(Self { handle })
+    }
+}
+
+impl Drop for Rosbag2Writer {
+    fn drop(&mut self) {
+        if !self.handle.is_null() {
+            unsafe { sys::rosbag2_writer_close(self.handle) };
+            self.handle = ptr::null_mut();
+        }
+    }
+}
+
+impl BagWriter for Rosbag2Writer {
+    fn create_topic(&mut self, topic: &TopicInfo) -> Result<()> {
+        let name = CString::new(topic.name.as_str())
+            .map_err(|e| Error::Ffi(format!("topic name null byte: {e}")))?;
+        let type_name = CString::new(topic.type_name.as_str())
+            .map_err(|e| Error::Ffi(format!("type name null byte: {e}")))?;
+        let ser_format = CString::new(topic.serialization_format.as_str())
+            .map_err(|e| Error::Ffi(format!("serialization format null byte: {e}")))?;
+
+        let rc = unsafe {
+            sys::rosbag2_writer_create_topic(
+                self.handle,
+                name.as_ptr(),
+                type_name.as_ptr(),
+                ser_format.as_ptr(),
+            )
+        };
+        if rc != 0 {
+            return Err(Error::Ffi(last_error()));
+        }
+        Ok(())
+    }
+
+    fn write(&mut self, msg: &RawMessage) -> Result<()> {
+        let topic = CString::new(msg.topic.as_str())
+            .map_err(|e| Error::Ffi(format!("topic name null byte: {e}")))?;
+
+        let rc = unsafe {
+            sys::rosbag2_writer_write(
+                self.handle,
+                topic.as_ptr(),
+                msg.timestamp_ns,
+                msg.data.as_ptr(),
+                msg.data.len(),
+            )
+        };
+        if rc != 0 {
+            return Err(Error::Ffi(last_error()));
+        }
+        Ok(())
+    }
+
+    fn close(mut self: Box<Self>) -> Result<()> {
+        if !self.handle.is_null() {
+            unsafe { sys::rosbag2_writer_close(self.handle) };
+            self.handle = ptr::null_mut();
         }
         Ok(())
     }

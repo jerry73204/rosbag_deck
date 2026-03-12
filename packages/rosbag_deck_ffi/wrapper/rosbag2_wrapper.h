@@ -86,6 +86,41 @@ int rosbag2_reader_set_filter(Rosbag2Reader *reader,
 /* Clear any topic filter. Returns 0 on success, -1 on error. */
 int rosbag2_reader_reset_filter(Rosbag2Reader *reader);
 
+/* Opaque handle to a rosbag2 writer. */
+typedef struct Rosbag2Writer Rosbag2Writer;
+
+/*
+ * Open a bag file for writing.
+ *
+ * @param uri        Path to the output bag directory.
+ * @param storage_id Storage backend ("sqlite3" or "mcap").
+ * @return           Writer handle, or NULL on failure.
+ */
+Rosbag2Writer *rosbag2_writer_open(const char *uri, const char *storage_id);
+
+/* Close and free a writer. Flushes any buffered data. Safe to call with NULL. */
+void rosbag2_writer_close(Rosbag2Writer *writer);
+
+/*
+ * Create a topic in the output bag. Must be called before writing messages
+ * on that topic. Returns 0 on success, -1 on error.
+ */
+int rosbag2_writer_create_topic(Rosbag2Writer *writer,
+                                const char *name,
+                                const char *type_name,
+                                const char *serialization_format);
+
+/*
+ * Write a serialized message to the output bag.
+ * The topic must have been created first via rosbag2_writer_create_topic().
+ * Returns 0 on success, -1 on error.
+ */
+int rosbag2_writer_write(Rosbag2Writer *writer,
+                         const char *topic,
+                         int64_t timestamp_ns,
+                         const uint8_t *data,
+                         size_t data_len);
+
 /* Returns the last error message, or NULL if no error. Thread-local. */
 const char *rosbag2_last_error(void);
 

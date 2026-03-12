@@ -1,6 +1,7 @@
 #include "rosbag2_wrapper.h"
 
 #include <rosbag2_cpp/reader.hpp>
+#include <rosbag2_cpp/writer.hpp>
 #include <rosbag2_storage/storage_filter.hpp>
 #include <rosbag2_storage/storage_options.hpp>
 
@@ -213,6 +214,97 @@ int rosbag2_reader_reset_filter(Rosbag2Reader *reader) {
         return 0;
     } catch (const std::exception &e) {
         set_error(std::string("reset_filter failed: ") + e.what());
+        return -1;
+    }
+}
+
+/* ----- Writer API ----- */
+
+struct Rosbag2Writer {
+    rosbag2_cpp::Writer writer;
+};
+
+Rosbag2Writer *rosbag2_writer_open(const char *uri, const char *storage_id) {
+    auto *w = new (std::nothrow) Rosbag2Writer();
+    if (!w) {
+        set_error("allocation failed");
+        return nullptr;
+    }
+
+    try {
+        rosbag2_storage::StorageOptions opts;
+        opts.uri = uri;
+        if (storage_id && storage_id[0] != '\0') {
+            opts.storage_id = storage_id;
+        }
+        w->writer.open(opts);
+    } catch (const std::exception &e) {
+        set_error(std::string("failed to open writer: ") + e.what());
+        delete w;
+        return nullptr;
+    }
+    return w;
+}
+
+void rosbag2_writer_close(Rosbag2Writer *writer) {
+    if (writer) {
+        try {
+            writer->writer.close();
+        } catch (...) {
+        }
+        delete writer;
+    }
+}
+
+int rosbag2_writer_create_topic(Rosbag2Writer *writer,
+                                const char *name,
+                                const char *type_name,
+                                const char *serialization_format) {
+    if (!writer || !name || !type_name || !serialization_format) {
+        set_error("null argument");
+        return -1;
+    }
+    try {
+        rosbag2_storage::TopicMetadata topic;
+        topic.name = name;
+        topic.type = type_name;
+        topic.serialization_format = serialization_format;
+        writer->writer.create_topic(topic);
+        return 0;
+    } catch (const std::exception &e) {
+        set_error(std::string("create_topic failed: ") + e.what());
+        return -1;
+    }
+}
+
+int rosbag2_writer_write(Rosbag2Writer *writer,
+                         const char *topic,
+                         int64_t timestamp_ns,
+                         const uint8_t *data,
+                         size_t data_len) {
+    if (!writer || !topic || (!data && data_len > 0)) {
+        set_error("null argument");
+        return -1;
+    }
+    try {
+        auto msg = std::make_shared<rosbag2_storage::SerializedBagMessage>();
+        msg->topic_name = topic;
+        msg->time_stamp = timestamp_ns;
+        msg->serialized_data = std::make_shared<rcutils_uint8_array_t>();
+        msg->serialized_data->buffer = const_cast<uint8_t *>(data);
+        msg->serialized_data->buffer_length = data_len;
+        msg->serialized_data->buffer_capacity = data_len;
+        msg->serialized_data->allocator = rcutils_get_default_allocator();
+        writer->writer.write(msg);
+
+        // Prevent the shared_ptr from freeing our borrowed buffer.
+        msg->serialized_data->buffer = nullptr;
+        msg->serialized_data->buffer_length = 0;
+        msg->serialized_data->buffer_capacity = 0;
+
+        return 0;
+    } catch (const std::exception &e) {
+        set_error(std::string("write failed: ") + e.what());
         return -1;
     }
 }

@@ -1,3 +1,4 @@
+mod edit;
 mod info;
 mod play;
 #[cfg(feature = "tui")]
@@ -50,6 +51,51 @@ enum Command {
         #[arg(long, short)]
         r#loop: bool,
     },
+    /// Edit bag files: slice, merge, filter, and transform timestamps.
+    Edit {
+        /// One or more input bag paths.
+        #[arg(required = true)]
+        input: Vec<PathBuf>,
+        /// Output bag path (required unless --dry-run).
+        #[arg(long, short)]
+        output: Option<PathBuf>,
+        /// Output storage format.
+        #[arg(long, default_value = "sqlite3")]
+        format: String,
+        /// Input storage backend (auto-detect if omitted).
+        #[arg(long, default_value = "")]
+        storage: String,
+        /// Topic whitelist (space or comma-separated).
+        #[arg(long, short, value_delimiter = ',', num_args = 1..)]
+        topics: Option<Vec<String>>,
+        /// Include topics matching a regex pattern.
+        #[arg(long, value_name = "PATTERN")]
+        regex: Option<String>,
+        /// Exclude topics matching a name or regex pattern.
+        #[arg(long, short, value_name = "PATTERN")]
+        exclude: Option<String>,
+        /// Start time (seconds from bag start).
+        #[arg(long)]
+        start: Option<f64>,
+        /// End time (seconds from bag start).
+        #[arg(long)]
+        end: Option<f64>,
+        /// Maximum duration from start (seconds).
+        #[arg(long)]
+        duration: Option<f64>,
+        /// Shift all timestamps by ±N seconds.
+        #[arg(long)]
+        time_offset: Option<f64>,
+        /// Scale timestamps relative to first message.
+        #[arg(long, default_value_t = 1.0)]
+        time_scale: f64,
+        /// Run pipeline without writing, print summary.
+        #[arg(long)]
+        dry_run: bool,
+        /// Print per-message progress.
+        #[arg(long, short)]
+        verbose: bool,
+    },
 }
 
 fn main() -> anyhow::Result<()> {
@@ -58,6 +104,40 @@ fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Command::Info { bag_path, storage } => info::run(&bag_path, &storage),
+        Command::Edit {
+            input,
+            output,
+            format,
+            storage,
+            topics,
+            regex,
+            exclude,
+            start,
+            end,
+            duration,
+            time_offset,
+            time_scale,
+            dry_run,
+            verbose,
+        } => {
+            let opts = edit::EditOpts {
+                input,
+                output,
+                format,
+                storage,
+                topics,
+                regex,
+                exclude,
+                start,
+                end,
+                duration,
+                time_offset,
+                time_scale,
+                dry_run,
+                verbose,
+            };
+            edit::run(&opts)
+        }
         Command::Play {
             bag_path,
             storage,
