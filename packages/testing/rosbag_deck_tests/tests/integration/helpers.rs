@@ -4,33 +4,66 @@ use std::path::{Path, PathBuf};
 
 use rosbag_deck_core::{reader::BagReader, Deck, DeckConfig, PlaybackMode};
 
-/// Return the test_bags/ directory, panicking if not present.
-pub fn test_bags_dir() -> PathBuf {
-    // Check env var first, then fall back to workspace default.
+/// Try to find the test_bags/ directory. Returns `None` if not present.
+pub fn try_test_bags_dir() -> Option<PathBuf> {
     if let Ok(dir) = std::env::var("ROSBAG_DECK_TEST_BAGS") {
         let p = PathBuf::from(dir);
         if p.is_dir() {
-            return p;
+            return Some(p);
         }
     }
 
-    // Walk up from the manifest dir to find workspace root.
     let mut dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     for _ in 0..5 {
         let candidate = dir.join("test_bags");
         if candidate.is_dir() {
-            return candidate;
+            return Some(candidate);
         }
         if !dir.pop() {
             break;
         }
     }
 
-    panic!(
-        "test_bags/ directory not found. Download test bags first:\n\
-         \n\
-         \t./scripts/download-test-bags.sh small\n"
-    );
+    None
+}
+
+/// Return the test_bags/ directory, panicking if not present.
+pub fn test_bags_dir() -> PathBuf {
+    try_test_bags_dir().unwrap_or_else(|| {
+        panic!(
+            "test_bags/ directory not found. Download test bags first:\n\
+             \n\
+             \t./scripts/download-test-bags.sh small\n"
+        )
+    })
+}
+
+/// Returns true if large bag tests are enabled via `ROSBAG_DECK_LARGE_TESTS=1`.
+pub fn large_tests_enabled() -> bool {
+    std::env::var("ROSBAG_DECK_LARGE_TESTS")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
+
+/// Skip the current test if test bags are not downloaded.
+macro_rules! skip_if_no_bags {
+    () => {
+        if crate::helpers::try_test_bags_dir().is_none() {
+            eprintln!("SKIPPED: test_bags/ not found. Run: ./scripts/download-test-bags.sh small");
+            return;
+        }
+    };
+}
+
+/// Skip the current test if large bag tests are not enabled.
+macro_rules! skip_if_no_large_bags {
+    () => {
+        skip_if_no_bags!();
+        if !crate::helpers::large_tests_enabled() {
+            eprintln!("SKIPPED: Set ROSBAG_DECK_LARGE_TESTS=1 to enable large bag tests");
+            return;
+        }
+    };
 }
 
 /// Open a rosbag2 bag via FFI, returning a boxed BagReader.

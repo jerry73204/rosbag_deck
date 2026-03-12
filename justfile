@@ -22,6 +22,12 @@ setup:
 generate-bindings:
     cargo build --profile {{ profile }} -p rosbag_deck_ffi --features generate-bindings
 
+run *args:
+    cargo run --profile {{ profile }} -p rosbag_deck -- {{ args }}
+
+bench:
+    cargo bench -p rosbag_deck_core --bench playback
+
 quality: check test
 
 clean:
