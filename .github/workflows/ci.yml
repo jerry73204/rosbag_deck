@@ -1,0 +1,133 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  check:
+    name: Clippy + Format
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (stable + nightly)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustfmt
+
+      - name: Install ROS 2 Humble
+        uses: ros-tooling/setup-ros@v0.7
+        with:
+          required-ros-distributions: humble
+
+      - name: Source ROS 2
+        run: echo "source /opt/ros/humble/setup.bash" >> $GITHUB_ENV
+        shell: bash
+
+      - name: Install colcon-cargo-ros2
+        run: pip install colcon-cargo-ros2
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Clippy
+        run: |
+          source /opt/ros/humble/setup.bash
+          cargo clippy --workspace --profile dev-release -- -D warnings
+
+      - name: Format check
+        run: cargo +nightly fmt --check
+
+  test:
+    name: Tests
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install ROS 2 Humble
+        uses: ros-tooling/setup-ros@v0.7
+        with:
+          required-ros-distributions: humble
+
+      - name: Install tools
+        run: |
+          pip install colcon-cargo-ros2
+          cargo install cargo-nextest --locked
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Download small test bags
+        run: ./scripts/download-test-bags.sh small
+
+      - name: Run tests
+        run: |
+          source /opt/ros/humble/setup.bash
+          cargo nextest run --cargo-profile dev-release
+
+  build:
+    name: Colcon Build
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install ROS 2 Humble
+        uses: ros-tooling/setup-ros@v0.7
+        with:
+          required-ros-distributions: humble
+
+      - name: Install colcon-cargo-ros2
+        run: pip install colcon-cargo-ros2
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: |
+          source /opt/ros/humble/setup.bash
+          colcon build --cargo-args --profile dev-release
+
+  large-tests:
+    name: Large Bag Tests
+    runs-on: ubuntu-22.04
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install ROS 2 Humble
+        uses: ros-tooling/setup-ros@v0.7
+        with:
+          required-ros-distributions: humble
+
+      - name: Install tools
+        run: |
+          pip install colcon-cargo-ros2
+          cargo install cargo-nextest --locked
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Download all test bags
+        run: ./scripts/download-test-bags.sh all
+
+      - name: Run all tests (including large)
+        env:
+          ROSBAG_DECK_LARGE_TESTS: "1"
+        run: |
+          source /opt/ros/humble/setup.bash
+          cargo nextest run --cargo-profile dev-release
