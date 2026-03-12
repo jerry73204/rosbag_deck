@@ -274,6 +274,18 @@ impl Deck {
         self.timeline.segment_id()
     }
 
+    pub fn speed(&self) -> f64 {
+        self.timeline.speed()
+    }
+
+    pub fn looping(&self) -> bool {
+        self.timeline.looping()
+    }
+
+    pub fn mode(&self) -> PlaybackMode {
+        self.timeline.mode()
+    }
+
     // -- Internal helpers --
 
     fn advance_cursor(&mut self) {

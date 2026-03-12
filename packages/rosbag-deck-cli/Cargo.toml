@@ -8,6 +8,7 @@ rust-version.workspace = true
 
 [dependencies]
 rosbag-deck = { workspace = true }
+rosbag-deck-ffi = { workspace = true }
 clap = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }

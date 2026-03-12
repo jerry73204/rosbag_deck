@@ -882,6 +882,7 @@ dependencies = [
  "crossterm",
  "ratatui",
  "rosbag-deck",
+ "rosbag-deck-ffi",
  "tracing",
  "tracing-subscriber",
 ]
