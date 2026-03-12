@@ -96,7 +96,12 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Build
+      - name: Pre-build with cargo (ensures FFI cdylib exists for ament_python)
+        run: |
+          source /opt/ros/humble/setup.bash
+          cargo build --profile dev-release
+
+      - name: Colcon build
         run: |
           source /opt/ros/humble/setup.bash
           colcon build --cargo-args --profile dev-release
