@@ -2,8 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use rosbag_deck::reader::BagReader;
-use rosbag_deck::{Deck, DeckConfig, PlaybackMode};
+use rosbag_deck::{reader::BagReader, Deck, DeckConfig, PlaybackMode};
 
 /// Return the test_bags/ directory, panicking if not present.
 pub fn test_bags_dir() -> PathBuf {

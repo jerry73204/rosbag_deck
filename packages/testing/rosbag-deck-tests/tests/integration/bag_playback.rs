@@ -40,7 +40,10 @@ fn play_convert_a_interleaved() {
     // Both topics should appear
     let topics: HashSet<&str> = msgs.iter().map(|m| m.message.topic.as_str()).collect();
     assert!(topics.contains("a_empty"), "missing a_empty topic");
-    assert!(topics.contains("b_basictypes"), "missing b_basictypes topic");
+    assert!(
+        topics.contains("b_basictypes"),
+        "missing b_basictypes topic"
+    );
 
     // Timestamps should be monotonically non-decreasing
     for window in msgs.windows(2) {

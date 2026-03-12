@@ -28,7 +28,10 @@ fn seek_to_start_talker() {
     let meta = deck.metadata().clone();
 
     deck.seek_to_time(meta.start_time_ns);
-    let msg = deck.step_forward().unwrap().expect("no message after seek to start");
+    let msg = deck
+        .step_forward()
+        .unwrap()
+        .expect("no message after seek to start");
 
     // Should be the first message
     assert_eq!(msg.message.timestamp_ns, meta.start_time_ns);
@@ -55,7 +58,10 @@ fn seek_ratio_start() {
     let meta = deck.metadata().clone();
 
     deck.seek_to_ratio(0.0);
-    let msg = deck.step_forward().unwrap().expect("no message at ratio 0.0");
+    let msg = deck
+        .step_forward()
+        .unwrap()
+        .expect("no message at ratio 0.0");
     assert_eq!(msg.message.timestamp_ns, meta.start_time_ns);
 }
 
@@ -108,7 +114,10 @@ fn seek_and_play_remaining() {
         "expected fewer than 20 messages after seek, got {}",
         msgs.len()
     );
-    assert!(!msgs.is_empty(), "expected at least some messages after seek");
+    assert!(
+        !msgs.is_empty(),
+        "expected at least some messages after seek"
+    );
 
     // All timestamps should be at or after midpoint
     for m in &msgs {

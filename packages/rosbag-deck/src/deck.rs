@@ -797,6 +797,9 @@ mod tests {
         while let Ok(Some(_)) = deck.next_message() {
             count += 1;
         }
-        assert_eq!(count, 10, "should play all 10 messages including duplicates");
+        assert_eq!(
+            count, 10,
+            "should play all 10 messages including duplicates"
+        );
     }
 }
