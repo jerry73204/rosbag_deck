@@ -7,82 +7,82 @@ Build the playback engine on top of the `BagReader` trait from Phase 1. Leverage
 Lazy, memory-bounded index that avoids full-bag iteration at open time.
 
 ### Tier 1: Milestones (permanent, O(1) to build)
-- [ ] Build milestone entries from `BagMetadata` time ranges (arithmetic, no I/O)
-- [ ] Divide each bag's `[start_time, end_time]` into N uniform intervals (default 1000)
-- [ ] Store `{ timestamp_ns, bag_id, enriched }` per milestone
-- [ ] Enrich milestones lazily when nearby messages are actually read
-- [ ] Multi-bag routing: `bags_containing(timestamp_ns)` from milestone time ranges
+- [x] Build milestone entries from `BagMetadata` time ranges (arithmetic, no I/O)
+- [x] Divide each bag's `[start_time, end_time]` into N uniform intervals (default 1000)
+- [x] Store `{ timestamp_ns, bag_id, enriched }` per milestone
+- [x] Enrich milestones lazily when nearby messages are actually read
+- [x] Multi-bag routing: `bags_containing(timestamp_ns)` from milestone time ranges
 
 ### Tier 2: Visited Index (bounded, evictable)
-- [ ] Record every message that flows through playback into `BTreeMap<i64, VisitedEntry>`
-- [ ] Configurable entry limit (default 50K entries)
-- [ ] Batch eviction: drop farthest 25% from cursor when limit reached
-- [ ] Exact timestamp lookup for previously-visited regions
+- [x] Record every message that flows through playback into `BTreeMap<i64, VisitedEntry>`
+- [x] Configurable entry limit (default 50K entries)
+- [x] Batch eviction: drop farthest 25% from cursor when limit reached
+- [x] Exact timestamp lookup for previously-visited regions
 
 ## 2.2 Message Cache
 
 Thread-safe message cache bounded by memory budget.
 
-- [ ] `BTreeMap<i64, RawMessage>` keyed by timestamp, protected by `Mutex`
-- [ ] Configurable memory budget (default 256 MB), tracked via `data.len()` sum
-- [ ] Window-based eviction: drop messages furthest from cursor
-- [ ] Full cache clear on distant seek (jump beyond prefetch window)
-- [ ] `get()`, `insert()`, `clear()` API
+- [x] `BTreeMap<i64, RawMessage>` keyed by timestamp, protected by `Mutex`
+- [x] Configurable memory budget (default 256 MB), tracked via `data.len()` sum
+- [x] Window-based eviction: drop messages furthest from cursor
+- [x] Full cache clear on distant seek (jump beyond prefetch window)
+- [x] `get()`, `insert()`, `clear()` API
 
 ## 2.3 Bag Worker
 
 One background I/O thread per bag file. Owns a `BagReader`, fills shared cache and index.
 
-- [ ] Command channel: `Seek { timestamp_ns }`, `Prefetch { count }`, `Shutdown`
-- [ ] Event channel: `Ready`, `SeekComplete`, `EndOfBag`, `Error`
-- [ ] On seek: delegate to `reader.seek()` (backend's native O(log n)), then prefetch forward
-- [ ] On prefetch: read next N messages, insert into cache + visited index
-- [ ] Graceful shutdown and error propagation
+- [x] Command channel: `Seek { timestamp_ns }`, `Prefetch { count }`, `Shutdown`
+- [x] Event channel: `Ready`, `SeekComplete`, `EndOfBag`, `Error`
+- [x] On seek: delegate to `reader.seek()` (backend's native O(log n)), then prefetch forward
+- [x] On prefetch: read next N messages, insert into cache + visited index
+- [x] Graceful shutdown and error propagation
 
 ## 2.4 Virtual Timeline
 
 Maps wall-clock time to bag time. Pure logic, no I/O.
 
-- [ ] Real-time mode: `bag_time = bag_anchor + (now - wall_anchor) * speed`
-- [ ] Best-effort mode: return messages immediately, no timing
-- [ ] `delay_until(msg_timestamp_ns) -> Option<Duration>` for playback pacing
-- [ ] Segment IDs: increment on seek/step/rewind, discard stale prefetch results
-- [ ] Playback speed control (`set_speed(f64)`)
-- [ ] Pause/resume with timeline anchor adjustment
-- [ ] Loop playback support
+- [x] Real-time mode: `bag_time = bag_anchor + (now - wall_anchor) * speed`
+- [x] Best-effort mode: return messages immediately, no timing
+- [x] `delay_until(msg_timestamp_ns) -> Option<Duration>` for playback pacing
+- [x] Segment IDs: increment on seek/step/rewind, discard stale prefetch results
+- [x] Playback speed control (`set_speed(f64)`)
+- [x] Pause/resume with timeline anchor adjustment
+- [x] Loop playback support
 
 ## 2.5 Message Type Registry
 
 Topic-to-type map with optional filtering. Built from merged `BagMetadata`.
 
-- [ ] Build from `BagMetadata::topics` at open time
-- [ ] Topic filter: `set_filter(Option<HashSet<String>>)`
-- [ ] `is_accepted(topic)` check for playback loop
-- [ ] `topic_info(name)` lookup
+- [x] Build from `BagMetadata::topics` at open time
+- [x] Topic filter: `set_filter(Option<HashSet<String>>)`
+- [x] `is_accepted(topic)` check for playback loop
+- [x] `topic_info(name)` lookup
 
 ## 2.6 Deck (Public API Facade)
 
 Unified API that owns all components above.
 
-- [ ] `open(readers: Vec<Box<dyn BagReader>>, config) -> Result<Self>` — build milestones, spawn workers, initial prefetch
-- [ ] `play()`, `pause()`, `stop()`, `toggle_play_pause()`
-- [ ] `seek_to_time(ns)`, `seek_to_ratio(0.0..1.0)`
-- [ ] `step_forward()`, `step_backward()`
-- [ ] `set_speed(f64)`, `set_mode(RealTime|BestEffort)`, `set_looping(bool)`
-- [ ] `set_topic_filter(Option<HashSet<String>>)`
-- [ ] `next_message() -> Result<Option<TimedMessage>>` — core playback tick
-- [ ] Backward playback via seek-back-and-reverse-iterate strategy
+- [x] `open(readers: Vec<Box<dyn BagReader>>, config) -> Result<Self>` — build milestones, spawn workers, initial prefetch
+- [x] `play()`, `pause()`, `stop()`, `toggle_play_pause()`
+- [x] `seek_to_time(ns)`, `seek_to_ratio(0.0..1.0)`
+- [x] `step_forward()`, `step_backward()`
+- [x] `set_speed(f64)`, `set_mode(RealTime|BestEffort)`, `set_looping(bool)`
+- [x] `set_topic_filter(Option<HashSet<String>>)`
+- [x] `next_message() -> Result<Option<TimedMessage>>` — core playback tick
+- [x] Backward playback via seek-back-and-reverse-iterate strategy
 
 ## Criteria
 
-- [ ] `Deck::open()` completes in O(1) (metadata only, no full-bag scan)
-- [ ] Seeking delegates to backend's native index (O(log n))
-- [ ] Streaming playback with play/pause/stop/step controls
-- [ ] Seek creates new timeline segments correctly
-- [ ] Cache hit rate > 90% for sequential playback
-- [ ] Index and cache stay within configured memory bounds
-- [ ] Multi-bag playback merges messages by timestamp
-- [ ] `just quality` passes (clippy clean, all tests green)
+- [x] `Deck::open()` completes in O(1) (metadata only, no full-bag scan)
+- [x] Seeking delegates to backend's native index (O(log n))
+- [x] Streaming playback with play/pause/stop/step controls
+- [x] Seek creates new timeline segments correctly
+- [x] Cache hit rate > 90% for sequential playback
+- [x] Index and cache stay within configured memory bounds
+- [x] Multi-bag playback merges messages by timestamp
+- [x] `just quality` passes (clippy clean, all tests green)
 
 ## Tests
 

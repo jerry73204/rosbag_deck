@@ -22,44 +22,23 @@ just clean    # cargo clean + remove colcon dirs (build/, install/, log/)
 
 The default Cargo profile is `dev-release` (inherits `release` with `debug`, `debug-assertions`, `overflow-checks` enabled). Override with `just --set profile release`.
 
-## Build Commands
+## Running Builds, Checks, and Tests
 
-### Cargo (direct)
-```bash
-cargo build --profile dev-release
-cargo build --profile dev-release -p rosbag-deck
-```
+Always use justfile recipes instead of raw cargo/colcon/nextest commands. This ensures consistent profiles, flags, and tool configurations. Only use direct commands (e.g., `cargo clippy -p ...`, `cargo nextest run -p ...`) when you need to target a specific package or pass custom flags not covered by the recipes.
 
-### Colcon (ROS 2 integration via colcon-cargo-ros2)
 ```bash
-colcon build --cargo-args --profile dev-release
-colcon build --packages-select rosbag_deck
+just build    # Build everything (colcon + cargo, dev-release profile)
+just check    # Clippy + nightly fmt check
+just test     # Run all Rust tests via nextest
+just quality  # check + test (run before finishing work)
+just format   # Auto-format with nightly rustfmt
 ```
 
 ### Python
 ```bash
 uv sync
 cd packages/rosbag-deck-python && maturin develop
-```
-
-## Linting
-
-```bash
-# Rust
-cargo clippy --workspace --profile dev-release -- -D warnings
-cargo +nightly fmt --check
-
-# Python
 uv run ruff check packages/rosbag-deck-python/
-```
-
-## Testing
-
-```bash
-# Rust tests (nextest)
-cargo nextest run
-
-# Python tests
 uv run pytest packages/rosbag-deck-python/ -v
 ```
 

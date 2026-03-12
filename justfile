@@ -11,7 +11,7 @@ check:
     cargo +nightly fmt --check
 
 test:
-    cargo nextest run --profile {{ profile }}
+    cargo nextest run --cargo-profile {{ profile }}
 
 format:
     cargo +nightly fmt
