@@ -112,5 +112,5 @@ fn open_deck_from_talker() {
     let meta = deck.metadata();
 
     assert_eq!(meta.message_count, 20);
-    assert_eq!(deck.state(), rosbag_deck::PlaybackState::Stopped);
+    assert_eq!(deck.state(), rosbag_deck_core::PlaybackState::Stopped);
 }

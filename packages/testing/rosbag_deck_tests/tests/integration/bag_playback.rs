@@ -151,11 +151,11 @@ fn play_pause_resume() {
 
     // Pause
     deck.pause();
-    assert_eq!(deck.state(), rosbag_deck::PlaybackState::Paused);
+    assert_eq!(deck.state(), rosbag_deck_core::PlaybackState::Paused);
 
     // Resume
     deck.play();
-    assert_eq!(deck.state(), rosbag_deck::PlaybackState::Playing);
+    assert_eq!(deck.state(), rosbag_deck_core::PlaybackState::Playing);
 
     // Should be able to get more messages
     let m2 = deck.next_message().unwrap();

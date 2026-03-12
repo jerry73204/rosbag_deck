@@ -2,7 +2,7 @@ use std::{collections::HashSet, path::PathBuf};
 
 use pyo3::{exceptions::PyRuntimeError, prelude::*};
 
-use ::rosbag_deck::reader::BagReader;
+use rosbag_deck_core::reader::BagReader;
 
 // ── Helper ──────────────────────────────────────────────────────────────────
 
@@ -70,7 +70,7 @@ struct PlaybackStatus {
 ///             print(msg.topic)
 #[pyclass(unsendable)]
 struct Deck {
-    inner: ::rosbag_deck::Deck,
+    inner: rosbag_deck_core::Deck,
 }
 
 #[pymethods]
@@ -86,7 +86,7 @@ impl Deck {
         let reader = rosbag_deck_ffi::Rosbag2Reader::open(&PathBuf::from(path), storage)
             .map_err(to_py_err)?;
         let readers: Vec<Box<dyn BagReader>> = vec![Box::new(reader)];
-        let inner = ::rosbag_deck::Deck::open(readers, ::rosbag_deck::DeckConfig::default())
+        let inner = rosbag_deck_core::Deck::open(readers, rosbag_deck_core::DeckConfig::default())
             .map_err(to_py_err)?;
         Ok(Self { inner })
     }
@@ -198,8 +198,8 @@ impl Deck {
     /// Set playback mode: "realtime" or "best_effort".
     fn set_mode(&mut self, mode: &str) -> PyResult<()> {
         let m = match mode {
-            "realtime" => ::rosbag_deck::PlaybackMode::RealTime,
-            "best_effort" => ::rosbag_deck::PlaybackMode::BestEffort,
+            "realtime" => rosbag_deck_core::PlaybackMode::RealTime,
+            "best_effort" => rosbag_deck_core::PlaybackMode::BestEffort,
             _ => {
                 return Err(PyRuntimeError::new_err(format!(
                     "unknown mode: {mode} (use 'realtime' or 'best_effort')"

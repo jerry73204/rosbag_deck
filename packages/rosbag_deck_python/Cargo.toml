@@ -1,5 +1,5 @@
 [package]
-name = "rosbag-deck-python"
+name = "rosbag_deck_python"
 description = "Python bindings for rosbag-deck"
 version.workspace = true
 edition.workspace = true
@@ -11,6 +11,6 @@ name = "rosbag_deck"
 crate-type = ["cdylib"]
 
 [dependencies]
-rosbag-deck = { workspace = true }
-rosbag-deck-ffi = { workspace = true }
+rosbag_deck_core = { workspace = true }
+rosbag_deck_ffi = { workspace = true }
 pyo3 = { workspace = true }

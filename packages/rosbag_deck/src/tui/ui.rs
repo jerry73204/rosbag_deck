@@ -3,7 +3,7 @@ use ratatui::{
     widgets::{Block, Borders, Gauge, Paragraph, Row, Table},
 };
 
-use rosbag_deck::PlaybackState;
+use rosbag_deck_core::PlaybackState;
 
 use super::App;
 

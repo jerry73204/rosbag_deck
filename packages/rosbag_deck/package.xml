@@ -1,14 +1,14 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>rosbag_deck_python</name>
+  <name>rosbag_deck</name>
   <version>0.1.0</version>
-  <description>Python bindings for rosbag-deck</description>
+  <description>CLI and TUI for rosbag-deck</description>
   <maintainer email="jerry73204@gmail.com">aeon</maintainer>
   <license>MIT</license>
 
-  <depend>rosbag_deck</depend>
+  <depend>rosbag_deck_core</depend>
 
   <export>
-    <build_type>ament_python</build_type>
+    <build_type>ament_cargo</build_type>
   </export>
 </package>

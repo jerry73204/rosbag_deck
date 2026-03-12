@@ -1,6 +1,6 @@
 use std::{collections::HashSet, path::PathBuf};
 
-use rosbag_deck::{BagReader, Deck, DeckConfig, PlaybackMode};
+use rosbag_deck_core::{BagReader, Deck, DeckConfig, PlaybackMode};
 use rosbag_deck_ffi::Rosbag2Reader;
 
 pub struct PlayOpts {

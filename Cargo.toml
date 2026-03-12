@@ -2,11 +2,11 @@
 resolver = "2"
 
 members = [
-    "packages/rosbag-deck",
-    "packages/rosbag-deck-cli",
-    "packages/rosbag-deck-python",
-    "packages/rosbag-deck-ffi",
-    "packages/testing/rosbag-deck-tests",
+    "packages/rosbag_deck_core",
+    "packages/rosbag_deck",
+    "packages/rosbag_deck_python",
+    "packages/rosbag_deck_ffi",
+    "packages/testing/rosbag_deck_tests",
 ]
 
 [workspace.package]
@@ -17,8 +17,8 @@ rust-version = "1.75"
 
 [workspace.dependencies]
 # Internal crates
-rosbag-deck = { path = "packages/rosbag-deck" }
-rosbag-deck-ffi = { path = "packages/rosbag-deck-ffi" }
+rosbag_deck_core = { path = "packages/rosbag_deck_core" }
+rosbag_deck_ffi = { path = "packages/rosbag_deck_ffi" }
 
 # Serialization / bag formats
 mcap = "0.9"

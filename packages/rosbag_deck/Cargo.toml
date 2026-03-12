@@ -1,5 +1,5 @@
 [package]
-name = "rosbag-deck-cli"
+name = "rosbag_deck"
 description = "CLI and TUI for rosbag-deck"
 version.workspace = true
 edition.workspace = true
@@ -7,8 +7,8 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-rosbag-deck = { workspace = true }
-rosbag-deck-ffi = { workspace = true }
+rosbag_deck_core = { workspace = true }
+rosbag_deck_ffi = { workspace = true }
 clap = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }

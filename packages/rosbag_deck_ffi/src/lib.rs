@@ -7,7 +7,7 @@ use std::{
     time::Duration,
 };
 
-use rosbag_deck::{
+use rosbag_deck_core::{
     reader::BagReader,
     types::{BagMetadata, RawMessage, TopicInfo},
     Error, Result,

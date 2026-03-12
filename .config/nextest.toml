@@ -19,5 +19,5 @@ fail-fast = true
 max-threads = 1
 
 [[profile.default.overrides]]
-filter = "package(rosbag-deck-tests)"
+filter = "package(rosbag_deck_tests)"
 test-group = "bag-io"

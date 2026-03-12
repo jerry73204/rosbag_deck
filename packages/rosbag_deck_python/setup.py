@@ -24,7 +24,7 @@ class BuildPyWithCdylib(build_py):
         if so_path is None:
             raise RuntimeError(
                 "Pre-built rosbag_deck cdylib not found. "
-                "Run `cargo build --profile dev-release -p rosbag-deck-python` first."
+                "Run `cargo build --profile dev-release -p rosbag_deck_python` first."
             )
 
         ext_suffix = sysconfig.get_config_var("EXT_SUFFIX") or ".so"

@@ -37,34 +37,34 @@ just format   # Auto-format with nightly rustfmt
 ### Python
 ```bash
 uv sync
-cd packages/rosbag-deck-python && maturin develop
-uv run ruff check packages/rosbag-deck-python/
-uv run pytest packages/rosbag-deck-python/ -v
+cd packages/rosbag_deck_python && maturin develop
+uv run ruff check packages/rosbag_deck_python/
+uv run pytest packages/rosbag_deck_python/ -v
 ```
 
 ## Architecture
 
 ### Package Dependencies
 ```
-rosbag-deck-ffi (FFI to ROS 2: rosbag2, etc.)
+rosbag_deck_ffi (FFI to ROS 2: rosbag2, etc.)
     ↓
-rosbag-deck (Rust core library)
+rosbag_deck_core (Rust core library)
     ↓              ↓
-rosbag-deck-cli   rosbag-deck-python (PyO3)
+rosbag_deck       rosbag_deck_python (PyO3)
     (CLI + TUI)
 
-rosbag-deck-tests (integration tests)
+rosbag_deck_tests (integration tests)
 ```
 
 ### Packages
 
 | Package | Path | Description |
 |---------|------|-------------|
-| `rosbag-deck` | `packages/rosbag-deck/` | Core library: indexing, caching, streaming, virtual timeline |
-| `rosbag-deck-cli` | `packages/rosbag-deck-cli/` | CLI + optional ratatui TUI |
-| `rosbag-deck-python` | `packages/rosbag-deck-python/` | PyO3 Python bindings |
-| `rosbag-deck-ffi` | `packages/rosbag-deck-ffi/` | FFI bindings to ROS 2 C/C++ libraries |
-| `rosbag-deck-tests` | `packages/testing/rosbag-deck-tests/` | Integration tests (nextest) |
+| `rosbag_deck_core` | `packages/rosbag_deck_core/` | Core library: indexing, caching, streaming, virtual timeline |
+| `rosbag_deck` | `packages/rosbag_deck/` | CLI + optional ratatui TUI |
+| `rosbag_deck_python` | `packages/rosbag_deck_python/` | PyO3 Python bindings |
+| `rosbag_deck_ffi` | `packages/rosbag_deck_ffi/` | FFI bindings to ROS 2 C/C++ libraries |
+| `rosbag_deck_tests` | `packages/testing/rosbag_deck_tests/` | Integration tests (nextest) |
 
 ### Key Design Patterns
 

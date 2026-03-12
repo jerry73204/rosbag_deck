@@ -1,5 +1,5 @@
 [package]
-name = "rosbag-deck"
+name = "rosbag_deck_core"
 description = "Interactive ROS 2 bag player with tape deck-style controls"
 version.workspace = true
 edition.workspace = true

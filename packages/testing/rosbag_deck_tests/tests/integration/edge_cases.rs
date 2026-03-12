@@ -1,7 +1,7 @@
 //! Edge case tests: empty bags, error handling.
 
 use super::helpers::*;
-use rosbag_deck::{Deck, DeckConfig, PlaybackMode};
+use rosbag_deck_core::{Deck, DeckConfig, PlaybackMode};
 
 #[test]
 fn empty_bag_playback() {
@@ -54,7 +54,7 @@ fn stop_then_play_restarts() {
 
     // Stop
     deck.stop();
-    assert_eq!(deck.state(), rosbag_deck::PlaybackState::Stopped);
+    assert_eq!(deck.state(), rosbag_deck_core::PlaybackState::Stopped);
 
     // Play again — should be able to get messages
     let msgs = drain_messages(&mut deck);

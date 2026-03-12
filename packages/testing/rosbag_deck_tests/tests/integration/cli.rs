@@ -4,7 +4,7 @@ use std::{path::PathBuf, process::Command};
 
 use super::helpers::test_bags_dir;
 
-/// Find the rosbag-deck-cli binary in the cargo target directory.
+/// Find the rosbag_deck binary in the cargo target directory.
 fn cli_binary() -> PathBuf {
     // Walk up from CARGO_MANIFEST_DIR to find the workspace root with target/.
     let mut dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -13,7 +13,7 @@ fn cli_binary() -> PathBuf {
         if target.is_dir() {
             // Check common profile directories.
             for profile in ["dev-release", "release", "debug"] {
-                let bin = target.join(profile).join("rosbag-deck-cli");
+                let bin = target.join(profile).join("rosbag_deck");
                 if bin.exists() {
                     return bin;
                 }
@@ -24,9 +24,9 @@ fn cli_binary() -> PathBuf {
         }
     }
     panic!(
-        "rosbag-deck-cli binary not found in target/. Build it first:\n\
+        "rosbag_deck binary not found in target/. Build it first:\n\
          \n\
-         \tcargo build --profile dev-release -p rosbag-deck-cli\n"
+         \tcargo build --profile dev-release -p rosbag_deck\n"
     );
 }
 

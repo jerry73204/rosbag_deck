@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use rosbag_deck::{reader::BagReader, Deck, DeckConfig, PlaybackMode};
+use rosbag_deck_core::{reader::BagReader, Deck, DeckConfig, PlaybackMode};
 
 /// Return the test_bags/ directory, panicking if not present.
 pub fn test_bags_dir() -> PathBuf {
@@ -50,7 +50,7 @@ pub fn open_deck(path: &Path) -> Deck {
 }
 
 /// Collect all messages from a playing deck.
-pub fn drain_messages(deck: &mut Deck) -> Vec<rosbag_deck::TimedMessage> {
+pub fn drain_messages(deck: &mut Deck) -> Vec<rosbag_deck_core::TimedMessage> {
     deck.play();
     let mut msgs = Vec::new();
     while let Ok(Some(m)) = deck.next_message() {

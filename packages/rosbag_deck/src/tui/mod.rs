@@ -14,7 +14,7 @@ use crossterm::{
 };
 use ratatui::prelude::*;
 
-use rosbag_deck::{PlaybackMode, PlaybackState, TimedMessage};
+use rosbag_deck_core::{PlaybackMode, PlaybackState, TimedMessage};
 
 use crate::play::{self, PlayOpts};
 
@@ -23,7 +23,7 @@ const MESSAGE_LOG_CAPACITY: usize = 200;
 
 /// TUI application state.
 pub struct App {
-    pub deck: rosbag_deck::Deck,
+    pub deck: rosbag_deck_core::Deck,
     pub message_log: VecDeque<LogEntry>,
     pub should_quit: bool,
     pub seek_input: Option<String>,

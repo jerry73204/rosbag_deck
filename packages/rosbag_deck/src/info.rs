@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use rosbag_deck::BagReader;
+use rosbag_deck_core::BagReader;
 use rosbag_deck_ffi::Rosbag2Reader;
 
 pub fn run(bag_path: &Path, storage_id: &str) -> anyhow::Result<()> {

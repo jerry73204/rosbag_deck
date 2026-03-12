@@ -20,7 +20,7 @@ setup:
     pip install colcon-cargo-ros2
 
 generate-bindings:
-    cargo build --profile {{ profile }} -p rosbag-deck-ffi --features generate-bindings
+    cargo build --profile {{ profile }} -p rosbag_deck_ffi --features generate-bindings
 
 quality: check test
 

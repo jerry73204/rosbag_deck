@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>rosbag_deck</name>
+  <name>rosbag_deck_core</name>
   <version>0.1.0</version>
   <description>Interactive ROS 2 bag player with tape deck-style controls</description>
   <maintainer email="jerry73204@gmail.com">aeon</maintainer>

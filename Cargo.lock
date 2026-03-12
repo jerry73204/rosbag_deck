@@ -893,55 +893,55 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba39f3699c378cd8970968dcbff9c43159ea4cfbd88d43c00b22f2ef10a435d2"
 
 [[package]]
-name = "rosbag-deck"
-version = "0.1.0"
-dependencies = [
- "thiserror",
- "tracing",
-]
-
-[[package]]
-name = "rosbag-deck-cli"
+name = "rosbag_deck"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
  "crossterm",
  "ratatui",
- "rosbag-deck",
- "rosbag-deck-ffi",
+ "rosbag_deck_core",
+ "rosbag_deck_ffi",
  "tracing",
  "tracing-subscriber",
 ]
 
 [[package]]
-name = "rosbag-deck-ffi"
+name = "rosbag_deck_core"
 version = "0.1.0"
 dependencies = [
- "bindgen",
- "cc",
- "rosbag-deck",
  "thiserror",
  "tracing",
 ]
 
 [[package]]
-name = "rosbag-deck-python"
+name = "rosbag_deck_ffi"
 version = "0.1.0"
 dependencies = [
- "pyo3",
- "rosbag-deck",
- "rosbag-deck-ffi",
+ "bindgen",
+ "cc",
+ "rosbag_deck_core",
+ "thiserror",
+ "tracing",
 ]
 
 [[package]]
-name = "rosbag-deck-tests"
+name = "rosbag_deck_python"
+version = "0.1.0"
+dependencies = [
+ "pyo3",
+ "rosbag_deck_core",
+ "rosbag_deck_ffi",
+]
+
+[[package]]
+name = "rosbag_deck_tests"
 version = "0.1.0"
 dependencies = [
  "assert_cmd",
  "predicates",
- "rosbag-deck",
- "rosbag-deck-ffi",
+ "rosbag_deck_core",
+ "rosbag_deck_ffi",
  "rstest",
  "tempfile",
 ]

@@ -1,5 +1,5 @@
 [package]
-name = "rosbag-deck-ffi"
+name = "rosbag_deck_ffi"
 description = "FFI bindings to ROS 2 libraries (rosbag2, etc.)"
 version.workspace = true
 edition.workspace = true
@@ -12,7 +12,7 @@ rust-version.workspace = true
 generate-bindings = ["bindgen"]
 
 [dependencies]
-rosbag-deck = { workspace = true }
+rosbag_deck_core = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 
