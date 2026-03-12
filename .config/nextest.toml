@@ -13,3 +13,11 @@ store-failure-output = true
 [profile.ci]
 slow-timeout = { period = "30s", terminate-after = 2 }
 fail-fast = true
+
+# Serialize tests that open real bag files to prevent I/O contention.
+[test-groups.bag-io]
+max-threads = 1
+
+[[profile.default.overrides]]
+filter = "package(rosbag-deck-tests)"
+test-group = "bag-io"

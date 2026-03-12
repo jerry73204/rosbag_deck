@@ -12,6 +12,8 @@ path = "tests/integration.rs"
 
 [dev-dependencies]
 rosbag-deck = { workspace = true }
+rosbag-deck-ffi = { workspace = true }
 rstest = { workspace = true }
 tempfile = { workspace = true }
 assert_cmd = { workspace = true }
+predicates = "3"
