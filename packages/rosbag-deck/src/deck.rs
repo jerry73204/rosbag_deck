@@ -22,7 +22,10 @@ pub struct Deck {
     workers: Vec<BagWorkerHandle>,
     timeline: VirtualTimeline,
     registry: MessageTypeRegistry,
+    /// Current cursor timestamp.
     cursor_ns: i64,
+    /// Sub-index within messages at cursor_ns (for duplicate timestamps).
+    cursor_sub: u32,
     metadata: BagMetadata,
 }
 
@@ -65,18 +68,50 @@ impl Deck {
         let timeline = VirtualTimeline::new(merged.start_time_ns, merged.end_time_ns);
         let cursor_ns = merged.start_time_ns;
 
-        let deck = Self {
+        let mut deck = Self {
             index,
             cache,
             workers,
             timeline,
             registry,
             cursor_ns,
+            cursor_sub: 0,
             metadata: merged,
         };
 
-        // Initial prefetch from all bags starting at the beginning.
-        deck.prefetch_all(config.prefetch_ahead);
+        // Initial prefetch from all bags: send commands and wait for completion.
+        for worker in &deck.workers {
+            let _ = worker.send(WorkerCommand::Prefetch {
+                count: config.prefetch_ahead,
+            });
+        }
+        // Block until all workers report back.
+        for worker in &deck.workers {
+            match worker.event_rx.recv_timeout(Duration::from_secs(10)) {
+                Ok(
+                    WorkerEvent::Ready { .. }
+                    | WorkerEvent::EndOfBag { .. }
+                    | WorkerEvent::SeekComplete { .. },
+                ) => {}
+                Ok(WorkerEvent::Error { bag_id, message }) => {
+                    tracing::warn!(bag_id, %message, "worker error during initial prefetch");
+                }
+                Err(_) => {
+                    tracing::warn!("timeout waiting for initial prefetch");
+                }
+            }
+        }
+        deck.drain_events_nonblocking();
+
+        // If the cache has messages before cursor_ns (metadata/data mismatch),
+        // adjust cursor and metadata to match actual data.
+        if let Some((first_ts, _)) = deck.cache.first_key() {
+            if first_ts < deck.cursor_ns {
+                deck.cursor_ns = first_ts;
+                deck.cursor_sub = 0;
+                deck.metadata.start_time_ns = first_ts;
+            }
+        }
 
         Ok(deck)
     }
@@ -105,7 +140,16 @@ impl Deck {
     pub fn seek_to_time(&mut self, timestamp_ns: i64) {
         self.timeline.seek(timestamp_ns);
         self.cursor_ns = timestamp_ns;
+        self.cursor_sub = 0;
         self.cache.clear();
+
+        // Drain stale events before sending new commands.
+        self.drain_events_nonblocking();
+
+        // Don't bother seeking workers if we're past the end.
+        if timestamp_ns > self.metadata.end_time_ns {
+            return;
+        }
 
         let bags = self.index.bags_containing(timestamp_ns);
         for worker in &self.workers {
@@ -121,9 +165,14 @@ impl Deck {
     /// Seek to a ratio (0.0 = start, 1.0 = end).
     pub fn seek_to_ratio(&mut self, ratio: f64) {
         let ratio = ratio.clamp(0.0, 1.0);
-        let range = self.metadata.end_time_ns - self.metadata.start_time_ns;
-        let ts = self.metadata.start_time_ns + (range as f64 * ratio) as i64;
-        self.seek_to_time(ts);
+        if ratio >= 1.0 {
+            // Past the end — no more messages.
+            self.seek_to_time(self.metadata.end_time_ns + 1);
+        } else {
+            let range = self.metadata.end_time_ns - self.metadata.start_time_ns;
+            let ts = self.metadata.start_time_ns + (range as f64 * ratio) as i64;
+            self.seek_to_time(ts);
+        }
     }
 
     /// Step one message forward.
@@ -131,7 +180,7 @@ impl Deck {
         self.timeline.advance_segment();
         self.ensure_cache_near_cursor();
 
-        if let Some(msg) = self.cache.get(self.cursor_ns) {
+        if let Some(msg) = self.cache.get_at(self.cursor_ns, self.cursor_sub) {
             let timed = TimedMessage {
                 message: msg,
                 segment_id: self.timeline.segment_id(),
@@ -141,9 +190,12 @@ impl Deck {
         }
 
         // Try next message after cursor.
-        if let Some(next_ts) = self.cache.next_timestamp_after(self.cursor_ns) {
+        if let Some((next_ts, next_sub)) =
+            self.cache.next_key_after(self.cursor_ns, self.cursor_sub)
+        {
             self.cursor_ns = next_ts;
-            if let Some(msg) = self.cache.get(next_ts) {
+            self.cursor_sub = next_sub;
+            if let Some(msg) = self.cache.get_at(next_ts, next_sub) {
                 let timed = TimedMessage {
                     message: msg,
                     segment_id: self.timeline.segment_id(),
@@ -160,9 +212,12 @@ impl Deck {
     pub fn step_backward(&mut self) -> Result<Option<TimedMessage>> {
         self.timeline.advance_segment();
 
-        if let Some(prev_ts) = self.cache.prev_timestamp_before(self.cursor_ns) {
+        if let Some((prev_ts, prev_sub)) =
+            self.cache.prev_key_before(self.cursor_ns, self.cursor_sub)
+        {
             self.cursor_ns = prev_ts;
-            if let Some(msg) = self.cache.get(prev_ts) {
+            self.cursor_sub = prev_sub;
+            if let Some(msg) = self.cache.get_at(prev_ts, prev_sub) {
                 return Ok(Some(TimedMessage {
                     message: msg,
                     segment_id: self.timeline.segment_id(),
@@ -210,22 +265,28 @@ impl Deck {
             self.ensure_cache_near_cursor();
 
             // Find the next message at or after cursor.
-            let msg = self.cache.get(self.cursor_ns).or_else(|| {
-                self.cache
-                    .next_timestamp_after(self.cursor_ns)
-                    .and_then(|ts| {
-                        self.cursor_ns = ts;
-                        self.cache.get(ts)
-                    })
-            });
+            let msg_key = self
+                .cache
+                .get_at(self.cursor_ns, self.cursor_sub)
+                .map(|m| ((self.cursor_ns, self.cursor_sub), m))
+                .or_else(|| {
+                    self.cache
+                        .next_key_after(self.cursor_ns, self.cursor_sub)
+                        .and_then(|(ts, sub)| {
+                            self.cursor_ns = ts;
+                            self.cursor_sub = sub;
+                            self.cache.get_at(ts, sub).map(|m| ((ts, sub), m))
+                        })
+                });
 
-            let msg = match msg {
-                Some(m) => m,
+            let ((_ts, _sub), msg) = match msg_key {
+                Some(pair) => pair,
                 None => {
                     // Check for end of bag.
                     if let Some(wrapped_ts) = self.timeline.check_end(self.cursor_ns) {
                         // Looping — seek back to start.
                         self.cursor_ns = wrapped_ts;
+                        self.cursor_sub = 0;
                         self.cache.clear();
                         self.prefetch_all(self.cache.prefetch_ahead());
                         continue;
@@ -289,12 +350,25 @@ impl Deck {
     // -- Internal helpers --
 
     fn advance_cursor(&mut self) {
-        if let Some(next) = self.cache.next_timestamp_after(self.cursor_ns) {
-            self.cursor_ns = next;
+        if let Some((next_ts, next_sub)) =
+            self.cache.next_key_after(self.cursor_ns, self.cursor_sub)
+        {
+            self.cursor_ns = next_ts;
+            self.cursor_sub = next_sub;
             self.maybe_prefetch();
         } else {
-            // Move cursor past current to signal end.
-            self.cursor_ns = self.metadata.end_time_ns + 1;
+            // Cache exhausted — try a blocking prefetch before giving up.
+            self.prefetch_all_blocking();
+            if let Some((next_ts, next_sub)) =
+                self.cache.next_key_after(self.cursor_ns, self.cursor_sub)
+            {
+                self.cursor_ns = next_ts;
+                self.cursor_sub = next_sub;
+            } else {
+                // Truly at end — no more data from any worker.
+                self.cursor_ns = self.metadata.end_time_ns + 1;
+                self.cursor_sub = 0;
+            }
         }
     }
 
@@ -314,16 +388,47 @@ impl Deck {
         self.drain_events_nonblocking();
     }
 
+    /// Send Prefetch to all workers and block until each responds.
+    fn prefetch_all_blocking(&self) {
+        let count = self.cache.prefetch_ahead();
+        for worker in &self.workers {
+            let _ = worker.send(WorkerCommand::Prefetch { count });
+        }
+        for worker in &self.workers {
+            match worker.event_rx.recv_timeout(Duration::from_secs(5)) {
+                Ok(
+                    WorkerEvent::Ready { .. }
+                    | WorkerEvent::EndOfBag { .. }
+                    | WorkerEvent::SeekComplete { .. },
+                ) => {}
+                Ok(WorkerEvent::Error { bag_id, message }) => {
+                    tracing::warn!(bag_id, %message, "worker error during prefetch");
+                }
+                Err(_) => {
+                    tracing::warn!("timeout waiting for prefetch");
+                }
+            }
+        }
+        self.drain_events_nonblocking();
+    }
+
     fn ensure_cache_near_cursor(&self) {
-        if self.cache.get(self.cursor_ns).is_none()
-            && self.cache.next_timestamp_after(self.cursor_ns).is_none()
+        if self.cache.get_at(self.cursor_ns, self.cursor_sub).is_none()
+            && self
+                .cache
+                .next_key_after(self.cursor_ns, self.cursor_sub)
+                .is_none()
         {
             // Cache miss — request data from workers.
-            let bags = self.index.bags_containing(self.cursor_ns);
+            let mut bags = self.index.bags_containing(self.cursor_ns);
+            if bags.is_empty() {
+                // Metadata time ranges may not cover actual data — ask all workers.
+                bags = self.index.all_bag_ids();
+            }
             for worker in &self.workers {
                 if bags.contains(&worker.bag_id) {
-                    let _ = worker.send(WorkerCommand::Seek {
-                        timestamp_ns: self.cursor_ns,
+                    let _ = worker.send(WorkerCommand::Prefetch {
+                        count: self.cache.prefetch_ahead(),
                     });
                 }
             }
@@ -332,7 +437,7 @@ impl Deck {
     }
 
     fn drain_until_seek_complete(&self, _bags: &[u16]) {
-        // Wait for at least one seek complete or ready event.
+        // Wait for at least one seek complete or ready event per worker.
         for worker in &self.workers {
             match worker.event_rx.recv_timeout(Duration::from_secs(5)) {
                 Ok(
@@ -348,6 +453,8 @@ impl Deck {
                 }
             }
         }
+        // Drain any remaining events from this seek.
+        self.drain_events_nonblocking();
     }
 
     fn drain_events_nonblocking(&self) {
@@ -639,5 +746,57 @@ mod tests {
         deck.play();
         let msg = deck.next_message().unwrap();
         assert!(msg.is_some());
+    }
+
+    #[test]
+    fn test_duplicate_timestamp_playback() {
+        // Create a reader where multiple messages share timestamps.
+        let mut messages = Vec::new();
+        for i in 0..10 {
+            // 2 messages per timestamp
+            messages.push(RawMessage {
+                timestamp_ns: 1000 + (i / 2) * 1000,
+                topic: format!("/topic_{}", i % 2),
+                data: vec![i as u8; 32],
+            });
+        }
+        messages.sort_by_key(|m| m.timestamp_ns);
+
+        let end_ns = messages.last().unwrap().timestamp_ns;
+        let reader = MockBagReader {
+            metadata: BagMetadata {
+                topics: vec![
+                    TopicInfo {
+                        name: "/topic_0".to_string(),
+                        type_name: "std_msgs/msg/String".to_string(),
+                        serialization_format: "cdr".to_string(),
+                        message_count: 5,
+                    },
+                    TopicInfo {
+                        name: "/topic_1".to_string(),
+                        type_name: "std_msgs/msg/String".to_string(),
+                        serialization_format: "cdr".to_string(),
+                        message_count: 5,
+                    },
+                ],
+                message_count: 10,
+                duration: Duration::from_nanos((end_ns - 1000) as u64),
+                start_time_ns: 1000,
+                end_time_ns: end_ns,
+                storage_identifier: "mock".to_string(),
+            },
+            messages,
+            position: 0,
+        };
+
+        let mut deck = Deck::open(vec![Box::new(reader)], default_config()).unwrap();
+        deck.set_mode(PlaybackMode::BestEffort);
+        deck.play();
+
+        let mut count = 0;
+        while let Ok(Some(_)) = deck.next_message() {
+            count += 1;
+        }
+        assert_eq!(count, 10, "should play all 10 messages including duplicates");
     }
 }

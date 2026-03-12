@@ -86,6 +86,11 @@ impl IndexManager {
         &self.milestones
     }
 
+    /// Return all bag IDs.
+    pub fn all_bag_ids(&self) -> Vec<u16> {
+        self.bag_time_ranges.iter().map(|r| r.bag_id).collect()
+    }
+
     /// Return the bag IDs whose time range contains the given timestamp.
     pub fn bags_containing(&self, timestamp_ns: i64) -> Vec<u16> {
         self.bag_time_ranges

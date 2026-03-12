@@ -28,8 +28,9 @@ impl Default for CacheConfig {
 
 /// Thread-safe message cache bounded by memory budget.
 ///
-/// Messages are keyed by timestamp (nanoseconds). When the cache exceeds
-/// its memory budget, messages furthest from the cursor are evicted.
+/// Messages are keyed by `(timestamp_ns, sub_index)` to support multiple
+/// messages at the same nanosecond timestamp. When the cache exceeds its
+/// memory budget, messages furthest from the cursor are evicted.
 pub struct MessageCache {
     inner: Mutex<CacheInner>,
     current_bytes: AtomicUsize,
@@ -38,7 +39,7 @@ pub struct MessageCache {
 }
 
 struct CacheInner {
-    entries: BTreeMap<i64, RawMessage>,
+    entries: BTreeMap<(i64, u32), RawMessage>,
 }
 
 impl MessageCache {
@@ -53,10 +54,15 @@ impl MessageCache {
         }
     }
 
-    /// Retrieve a message by timestamp. Returns a clone.
+    /// Retrieve the first message at a timestamp. Returns a clone.
     pub fn get(&self, timestamp_ns: i64) -> Option<RawMessage> {
+        self.get_at(timestamp_ns, 0)
+    }
+
+    /// Retrieve the message at `(timestamp_ns, sub_index)`.
+    pub fn get_at(&self, timestamp_ns: i64, sub: u32) -> Option<RawMessage> {
         let inner = self.inner.lock().unwrap();
-        inner.entries.get(&timestamp_ns).cloned()
+        inner.entries.get(&(timestamp_ns, sub)).cloned()
     }
 
     /// Insert a message into the cache. Evicts if over budget.
@@ -66,19 +72,17 @@ impl MessageCache {
 
         {
             let mut inner = self.inner.lock().unwrap();
-            if let Some(old) = inner.entries.insert(ts, msg) {
-                // Replacing existing entry — adjust accounting.
-                let old_size = old.data.len();
-                if msg_size >= old_size {
-                    self.current_bytes
-                        .fetch_add(msg_size - old_size, Ordering::Relaxed);
-                } else {
-                    self.current_bytes
-                        .fetch_sub(old_size - msg_size, Ordering::Relaxed);
-                }
-            } else {
-                self.current_bytes.fetch_add(msg_size, Ordering::Relaxed);
-            }
+
+            // Find next available sub-index at this timestamp.
+            let sub = inner
+                .entries
+                .range((ts, 0)..=(ts, u32::MAX))
+                .next_back()
+                .map(|(&(_, s), _)| s + 1)
+                .unwrap_or(0);
+
+            inner.entries.insert((ts, sub), msg);
+            self.current_bytes.fetch_add(msg_size, Ordering::Relaxed);
 
             if self.current_bytes.load(Ordering::Relaxed) > self.max_bytes {
                 self.evict_locked(&mut inner, cursor_ns);
@@ -113,17 +117,46 @@ impl MessageCache {
         self.prefetch_ahead
     }
 
-    /// Returns the next timestamp after `cursor_ns` in the cache, if any.
+    /// Returns the first (smallest) key in the cache, if any.
+    pub fn first_key(&self) -> Option<(i64, u32)> {
+        let inner = self.inner.lock().unwrap();
+        inner.entries.keys().next().copied()
+    }
+
+    /// Returns the next cache key `(timestamp, sub)` after the given key.
+    pub fn next_key_after(&self, ts: i64, sub: u32) -> Option<(i64, u32)> {
+        let inner = self.inner.lock().unwrap();
+        inner
+            .entries
+            .range((
+                std::ops::Bound::Excluded((ts, sub)),
+                std::ops::Bound::Unbounded,
+            ))
+            .next()
+            .map(|(&k, _)| k)
+    }
+
+    /// Returns the next timestamp strictly after `cursor_ns` (any sub-index).
     pub fn next_timestamp_after(&self, cursor_ns: i64) -> Option<i64> {
         let inner = self.inner.lock().unwrap();
         inner
             .entries
             .range((
-                std::ops::Bound::Excluded(cursor_ns),
+                std::ops::Bound::Excluded((cursor_ns, u32::MAX)),
                 std::ops::Bound::Unbounded,
             ))
             .next()
-            .map(|(&ts, _)| ts)
+            .map(|(&(ts, _), _)| ts)
+    }
+
+    /// Returns the previous cache key before `(ts, sub)`.
+    pub fn prev_key_before(&self, ts: i64, sub: u32) -> Option<(i64, u32)> {
+        let inner = self.inner.lock().unwrap();
+        inner
+            .entries
+            .range(..(ts, sub))
+            .next_back()
+            .map(|(&k, _)| k)
     }
 
     /// Returns the previous timestamp before `cursor_ns` in the cache, if any.
@@ -131,9 +164,9 @@ impl MessageCache {
         let inner = self.inner.lock().unwrap();
         inner
             .entries
-            .range(..cursor_ns)
+            .range(..(cursor_ns, 0))
             .next_back()
-            .map(|(&ts, _)| ts)
+            .map(|(&(ts, _), _)| ts)
     }
 
     /// Evict entries furthest from cursor until under budget.
@@ -142,19 +175,19 @@ impl MessageCache {
 
         while self.current_bytes.load(Ordering::Relaxed) > target && !inner.entries.is_empty() {
             // Find the entry furthest from cursor.
-            let (&first_ts, _) = inner.entries.iter().next().unwrap();
-            let (&last_ts, _) = inner.entries.iter().next_back().unwrap();
+            let &(first_ts, first_sub) = inner.entries.keys().next().unwrap();
+            let &(last_ts, last_sub) = inner.entries.keys().next_back().unwrap();
 
             let dist_first = (first_ts - cursor_ns).unsigned_abs();
             let dist_last = (last_ts - cursor_ns).unsigned_abs();
 
-            let remove_ts = if dist_first >= dist_last {
-                first_ts
+            let remove_key = if dist_first >= dist_last {
+                (first_ts, first_sub)
             } else {
-                last_ts
+                (last_ts, last_sub)
             };
 
-            if let Some(removed) = inner.entries.remove(&remove_ts) {
+            if let Some(removed) = inner.entries.remove(&remove_key) {
                 self.current_bytes
                     .fetch_sub(removed.data.len(), Ordering::Relaxed);
             }
@@ -184,6 +217,40 @@ mod tests {
         assert_eq!(got.timestamp_ns, 1000);
         assert_eq!(got.data.len(), 64);
         assert!(cache.get(9999).is_none());
+    }
+
+    #[test]
+    fn test_duplicate_timestamps() {
+        let cache = MessageCache::new(CacheConfig::default());
+
+        // Insert 3 messages at the same timestamp with different topics.
+        for i in 0..3 {
+            cache.insert(
+                RawMessage {
+                    timestamp_ns: 1000,
+                    topic: format!("/topic_{i}"),
+                    data: vec![i as u8; 32],
+                },
+                1000,
+            );
+        }
+
+        assert_eq!(cache.len(), 3);
+        assert_eq!(cache.get_at(1000, 0).unwrap().topic, "/topic_0");
+        assert_eq!(cache.get_at(1000, 1).unwrap().topic, "/topic_1");
+        assert_eq!(cache.get_at(1000, 2).unwrap().topic, "/topic_2");
+    }
+
+    #[test]
+    fn test_next_key_after() {
+        let cache = MessageCache::new(CacheConfig::default());
+        cache.insert(make_msg(1000, 10), 0);
+        cache.insert(make_msg(1000, 10), 0); // same ts, sub=1
+        cache.insert(make_msg(2000, 10), 0);
+
+        assert_eq!(cache.next_key_after(1000, 0), Some((1000, 1)));
+        assert_eq!(cache.next_key_after(1000, 1), Some((2000, 0)));
+        assert_eq!(cache.next_key_after(2000, 0), None);
     }
 
     #[test]
