@@ -257,30 +257,14 @@ impl Deck {
     pub fn next_message(&mut self) -> Result<Option<TimedMessage>> {
         loop {
             match self.timeline.state() {
-                PlaybackState::Stopped => return Ok(None),
-                PlaybackState::Paused => return Ok(None),
+                PlaybackState::Stopped | PlaybackState::Paused => return Ok(None),
                 PlaybackState::Playing => {}
             }
 
-            self.ensure_cache_near_cursor();
+            let msg = self.find_next_cached_message();
 
-            // Find the next message at or after cursor.
-            let msg_key = self
-                .cache
-                .get_at(self.cursor_ns, self.cursor_sub)
-                .map(|m| ((self.cursor_ns, self.cursor_sub), m))
-                .or_else(|| {
-                    self.cache
-                        .next_key_after(self.cursor_ns, self.cursor_sub)
-                        .and_then(|(ts, sub)| {
-                            self.cursor_ns = ts;
-                            self.cursor_sub = sub;
-                            self.cache.get_at(ts, sub).map(|m| ((ts, sub), m))
-                        })
-                });
-
-            let ((_ts, _sub), msg) = match msg_key {
-                Some(pair) => pair,
+            let msg = match msg {
+                Some(msg) => msg,
                 None => {
                     // Check for end of bag.
                     if let Some(wrapped_ts) = self.timeline.check_end(self.cursor_ns) {
@@ -301,9 +285,60 @@ impl Deck {
                 continue;
             }
 
-            // Real-time pacing.
+            // Real-time pacing — block until it's time.
             if let Some(delay) = self.timeline.delay_until(msg.timestamp_ns) {
                 std::thread::sleep(delay);
+            }
+
+            let timed = TimedMessage {
+                message: msg,
+                segment_id: self.timeline.segment_id(),
+            };
+
+            self.advance_cursor();
+
+            return Ok(Some(timed));
+        }
+    }
+
+    /// Non-blocking variant of [`next_message`].
+    ///
+    /// Returns `Ok(Some(msg))` if a message is due for delivery right now.
+    /// Returns `Ok(None)` if no message is ready yet (waiting for real-time
+    /// pacing, paused, stopped, or at end of bag). Call this repeatedly from
+    /// an event loop without blocking the thread.
+    pub fn try_next_message(&mut self) -> Result<Option<TimedMessage>> {
+        loop {
+            match self.timeline.state() {
+                PlaybackState::Stopped | PlaybackState::Paused => return Ok(None),
+                PlaybackState::Playing => {}
+            }
+
+            let msg = self.find_next_cached_message();
+
+            let msg = match msg {
+                Some(msg) => msg,
+                None => {
+                    if let Some(wrapped_ts) = self.timeline.check_end(self.cursor_ns) {
+                        self.cursor_ns = wrapped_ts;
+                        self.cursor_sub = 0;
+                        self.cache.clear();
+                        self.prefetch_all(self.cache.prefetch_ahead());
+                        continue;
+                    }
+                    return Ok(None);
+                }
+            };
+
+            // Topic filter.
+            if !self.registry.is_accepted(&msg.topic) {
+                self.advance_cursor();
+                continue;
+            }
+
+            // Non-blocking: if message isn't due yet, return None.
+            if self.timeline.delay_until(msg.timestamp_ns).is_some() {
+                return Ok(None);
             }
 
             let timed = TimedMessage {
@@ -348,6 +383,25 @@ impl Deck {
     }
 
     // -- Internal helpers --
+
+    /// Find the next message at or after the cursor in the cache.
+    /// Updates cursor to the found position. Returns `None` if cache is empty
+    /// near the cursor.
+    fn find_next_cached_message(&mut self) -> Option<crate::types::RawMessage> {
+        self.ensure_cache_near_cursor();
+
+        if let Some(msg) = self.cache.get_at(self.cursor_ns, self.cursor_sub) {
+            return Some(msg);
+        }
+
+        if let Some((ts, sub)) = self.cache.next_key_after(self.cursor_ns, self.cursor_sub) {
+            self.cursor_ns = ts;
+            self.cursor_sub = sub;
+            return self.cache.get_at(ts, sub);
+        }
+
+        None
+    }
 
     fn advance_cursor(&mut self) {
         if let Some((next_ts, next_sub)) =

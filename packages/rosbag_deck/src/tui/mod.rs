@@ -14,7 +14,7 @@ use crossterm::{
 };
 use ratatui::prelude::*;
 
-use rosbag_deck_core::{PlaybackMode, PlaybackState, TimedMessage};
+use rosbag_deck_core::{PlaybackState, TimedMessage};
 
 use crate::play::{self, PlayOpts};
 
@@ -64,13 +64,17 @@ impl App {
             return;
         }
 
-        match self.deck.next_message() {
-            Ok(Some(timed)) => {
-                self.push_log(&timed);
-            }
-            Ok(None) => {}
-            Err(e) => {
-                self.status_message = Some(format!("Error: {e}"));
+        // Drain all messages that are due right now (non-blocking).
+        loop {
+            match self.deck.try_next_message() {
+                Ok(Some(timed)) => {
+                    self.push_log(&timed);
+                }
+                Ok(None) => break,
+                Err(e) => {
+                    self.status_message = Some(format!("Error: {e}"));
+                    break;
+                }
             }
         }
     }
@@ -219,7 +223,6 @@ pub fn run(opts: &PlayOpts) -> Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     let mut app = App::new(opts)?;
-    app.deck.set_mode(PlaybackMode::BestEffort);
 
     let tick_rate = Duration::from_millis(16); // ~60 fps
     let result = run_loop(&mut terminal, &mut app, tick_rate);
