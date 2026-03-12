@@ -30,10 +30,6 @@ jobs:
         with:
           required-ros-distributions: humble
 
-      - name: Source ROS 2
-        run: echo "source /opt/ros/humble/setup.bash" >> $GITHUB_ENV
-        shell: bash
-
       - name: Install colcon-cargo-ros2
         run: pip install colcon-cargo-ros2
 
@@ -70,6 +66,11 @@ jobs:
 
       - name: Download small test bags
         run: ./scripts/download-test-bags.sh small
+
+      - name: Build CLI binary (needed by CLI integration tests)
+        run: |
+          source /opt/ros/humble/setup.bash
+          cargo build --profile dev-release -p rosbag_deck
 
       - name: Run tests
         run: |
@@ -124,6 +125,11 @@ jobs:
 
       - name: Download all test bags
         run: ./scripts/download-test-bags.sh all
+
+      - name: Build CLI binary (needed by CLI integration tests)
+        run: |
+          source /opt/ros/humble/setup.bash
+          cargo build --profile dev-release -p rosbag_deck
 
       - name: Run all tests (including large)
         env:
