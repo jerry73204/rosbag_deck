@@ -96,6 +96,10 @@ just quality
 
 This runs clippy (with `-D warnings`) and all tests via nextest. All warnings and test failures must be resolved before considering the work complete.
 
+## Temporary Files
+
+Place all temporary/scratch files and scripts in `tmp/` (git-ignored). Do not create temporary files in the project root or other directories.
+
 ## Development Principles
 
 - If a feature or work is not done yet, always leave TODO comments. Don't generate dummy values or any kind of silent error.

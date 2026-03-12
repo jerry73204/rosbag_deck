@@ -29,3 +29,6 @@ htmlcov/
 test_logs/
 test_bags/
 junit.xml
+
+# scratch / temp
+tmp/
