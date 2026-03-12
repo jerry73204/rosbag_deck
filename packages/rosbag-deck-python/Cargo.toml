@@ -12,4 +12,5 @@ crate-type = ["cdylib"]
 
 [dependencies]
 rosbag-deck = { workspace = true }
+rosbag-deck-ffi = { workspace = true }
 pyo3 = { workspace = true }

@@ -9,6 +9,6 @@
   <depend>rosbag_deck</depend>
 
   <export>
-    <build_type>ament_cargo</build_type>
+    <build_type>ament_python</build_type>
   </export>
 </package>
