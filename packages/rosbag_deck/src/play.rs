@@ -1,4 +1,9 @@
-use std::{collections::HashSet, path::PathBuf};
+use std::{
+    collections::HashSet,
+    io::{self, Write},
+    path::PathBuf,
+    time::Instant,
+};
 
 use regex::Regex;
 use rosbag_deck_core::{BagReader, Deck, DeckConfig, LoopMode, PlaybackMode, QosPreset};
@@ -121,22 +126,46 @@ fn resolve_topic_filter(
     Ok(Some(accepted))
 }
 
-/// Headless playback — prints messages to stdout.
+/// Headless playback — shows progress like `ros2 bag play`.
 pub fn run_headless(opts: &PlayOpts) -> anyhow::Result<()> {
     let mut deck = open_deck(opts)?;
+    let meta = deck.metadata().clone();
+    let duration_ns = meta.end_time_ns - meta.start_time_ns;
 
     deck.set_mode(PlaybackMode::BestEffort);
     deck.play();
 
-    while let Some(timed) = deck.next_message()? {
-        let ts_sec = timed.message.timestamp_ns as f64 / 1e9;
-        println!(
-            "{:.6}  {:<40}  [{} bytes]",
-            ts_sec,
-            timed.message.topic,
-            timed.message.data.len(),
-        );
+    let mut msg_count: u64 = 0;
+    let mut last_print = Instant::now();
+    let stderr = io::stderr();
+
+    while let Some(_timed) = deck.next_message()? {
+        msg_count += 1;
+
+        // Update progress at most ~4 times per second.
+        if last_print.elapsed().as_millis() >= 250 {
+            let pos_ns = deck.cursor_ns() - meta.start_time_ns;
+            let progress = if duration_ns > 0 {
+                (pos_ns as f64 / duration_ns as f64 * 100.0).clamp(0.0, 100.0)
+            } else {
+                100.0
+            };
+            let pos_sec = pos_ns as f64 / 1e9;
+            let dur_sec = duration_ns as f64 / 1e9;
+
+            let mut handle = stderr.lock();
+            let _ = write!(
+                handle,
+                "\r{:.1}% [{:.1}s / {:.1}s] {msg_count} messages published",
+                progress, pos_sec, dur_sec,
+            );
+            let _ = handle.flush();
+            last_print = Instant::now();
+        }
     }
+
+    // Final line.
+    eprintln!("\r{:<60}", format!("Done. {msg_count} messages played."));
 
     Ok(())
 }

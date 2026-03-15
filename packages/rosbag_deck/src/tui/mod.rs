@@ -1,7 +1,9 @@
+mod log_subscriber;
 mod ui;
 
 use std::{
     collections::{HashSet, VecDeque},
+    sync::mpsc,
     time::{Duration, Instant},
 };
 
@@ -20,6 +22,9 @@ use crate::play::{self, PlayOpts};
 
 /// Maximum number of messages to keep in the log for display.
 const MESSAGE_LOG_CAPACITY: usize = 200;
+
+/// Maximum number of tracing log entries to keep for display.
+const TRACE_LOG_CAPACITY: usize = 100;
 
 /// State for the interactive topic selection panel.
 pub struct TopicPanel {
@@ -88,10 +93,12 @@ impl TopicPanel {
 pub struct App {
     pub deck: rosbag_deck_core::Deck,
     pub message_log: VecDeque<LogEntry>,
+    pub trace_log: VecDeque<log_subscriber::LogEvent>,
     pub should_quit: bool,
     pub seek_input: Option<String>,
     pub status_message: Option<String>,
     pub topic_panel: Option<TopicPanel>,
+    log_rx: mpsc::Receiver<log_subscriber::LogEvent>,
 }
 
 /// A single entry in the message log.
@@ -112,24 +119,34 @@ impl From<&TimedMessage> for LogEntry {
 }
 
 impl App {
-    fn new(opts: &PlayOpts) -> Result<Self> {
+    fn new(opts: &PlayOpts, log_rx: mpsc::Receiver<log_subscriber::LogEvent>) -> Result<Self> {
         let deck = play::open_deck(opts)?;
         Ok(Self {
             deck,
             message_log: VecDeque::with_capacity(MESSAGE_LOG_CAPACITY),
+            trace_log: VecDeque::with_capacity(TRACE_LOG_CAPACITY),
             should_quit: false,
             seek_input: None,
             status_message: None,
             topic_panel: None,
+            log_rx,
         })
     }
 
     fn tick(&mut self) {
+        // Drain tracing events into the trace log buffer.
+        while let Ok(event) = self.log_rx.try_recv() {
+            if self.trace_log.len() >= TRACE_LOG_CAPACITY {
+                self.trace_log.pop_front();
+            }
+            self.trace_log.push_back(event);
+        }
+
         if self.deck.state() != PlaybackState::Playing {
             return;
         }
 
-        // Drain all messages that are due right now (non-blocking).
+        // Drain all playback messages that are due right now (non-blocking).
         loop {
             match self.deck.try_next_message() {
                 Ok(Some(timed)) => {
@@ -401,13 +418,18 @@ fn next_speed_down(current: f64) -> f64 {
 
 /// Run the TUI.
 pub fn run(opts: &PlayOpts) -> Result<()> {
+    // Install a tracing subscriber that captures logs into a channel
+    // instead of writing to stderr (which would corrupt the TUI).
+    let log_rx = log_subscriber::init();
+
+    // Open deck before entering alternate screen so startup messages are visible.
+    let mut app = App::new(opts, log_rx)?;
+
     terminal::enable_raw_mode()?;
     let mut stdout = std::io::stdout();
     execute!(stdout, EnterAlternateScreen, cursor::Hide)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
-
-    let mut app = App::new(opts)?;
 
     let tick_rate = Duration::from_millis(16); // ~60 fps
     let result = run_loop(&mut terminal, &mut app, tick_rate);

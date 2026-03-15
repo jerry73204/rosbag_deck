@@ -7,6 +7,7 @@ mod tui;
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
+use tracing_subscriber::EnvFilter;
 
 #[derive(Parser)]
 #[command(name = "rosbag-deck", about = "Interactive ROS 2 bag player")]
@@ -115,8 +116,17 @@ enum Command {
 }
 
 fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt::init();
     let cli = Cli::parse();
+
+    // Initialize tracing for non-TUI modes. TUI mode manages its own output.
+    let is_tui = matches!(&cli.command, Command::Play { tui: true, .. });
+    if !is_tui {
+        tracing_subscriber::fmt()
+            .with_env_filter(
+                EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+            )
+            .init();
+    }
 
     match cli.command {
         Command::Info { bag_path, storage } => info::run(&bag_path, &storage),

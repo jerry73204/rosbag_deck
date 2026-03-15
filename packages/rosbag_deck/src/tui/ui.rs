@@ -3,6 +3,8 @@ use ratatui::{
     widgets::{Block, Borders, Clear, Gauge, List, ListItem, Paragraph, Row, Table},
 };
 
+use tracing::Level;
+
 use rosbag_deck_core::{LoopMode, PlaybackState};
 
 use super::App;
@@ -11,22 +13,36 @@ pub fn draw(frame: &mut Frame, app: &App) {
     let area = frame.area();
 
     let chunks = Layout::vertical([
-        Constraint::Length(3), // header
-        Constraint::Length(3), // transport + timeline
-        Constraint::Min(5),    // topics / messages
-        Constraint::Length(2), // help bar
+        Constraint::Length(3),                                  // header
+        Constraint::Length(3),                                  // transport + timeline
+        Constraint::Min(5),                                     // messages
+        Constraint::Length(log_panel_height(app, area.height)), // logs
+        Constraint::Length(2),                                  // help bar
     ])
     .split(area);
 
     draw_header(frame, app, chunks[0]);
     draw_transport(frame, app, chunks[1]);
     draw_messages(frame, app, chunks[2]);
-    draw_help(frame, app, chunks[3]);
+    draw_logs(frame, app, chunks[3]);
+    draw_help(frame, app, chunks[4]);
 
     // Topic panel overlay.
     if let Some(ref panel) = app.topic_panel {
         draw_topic_panel(frame, panel, area);
     }
+}
+
+/// Compute log panel height: 0 if empty, otherwise up to 30% of terminal height
+/// (min 4 lines including border).
+fn log_panel_height(app: &App, terminal_height: u16) -> u16 {
+    if app.trace_log.is_empty() {
+        return 0;
+    }
+    let max_h = (terminal_height as f64 * 0.3).clamp(4.0, 15.0) as u16;
+    // +2 for borders
+    let needed = (app.trace_log.len() as u16 + 2).min(max_h);
+    needed.max(4)
 }
 
 fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
@@ -154,6 +170,42 @@ fn draw_messages(frame: &mut Frame, app: &App, area: Rect) {
         .block(block);
 
     frame.render_widget(table, area);
+}
+
+fn draw_logs(frame: &mut Frame, app: &App, area: Rect) {
+    if app.trace_log.is_empty() || area.height == 0 {
+        return;
+    }
+
+    let block = Block::default()
+        .title(" Logs ")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::DarkGray));
+
+    let inner_height = area.height.saturating_sub(2) as usize;
+    let start = app.trace_log.len().saturating_sub(inner_height);
+
+    let items: Vec<ListItem> = app
+        .trace_log
+        .iter()
+        .skip(start)
+        .map(|event| {
+            let (prefix, color) = match event.level {
+                Level::ERROR => ("ERROR", Color::Red),
+                Level::WARN => ("WARN ", Color::Yellow),
+                Level::INFO => ("INFO ", Color::Green),
+                Level::DEBUG => ("DEBUG", Color::Blue),
+                Level::TRACE => ("TRACE", Color::DarkGray),
+            };
+            ListItem::new(Line::from(vec![
+                Span::styled(format!("{prefix} "), Style::default().fg(color)),
+                Span::styled(&event.message, Style::default().fg(color)),
+            ]))
+        })
+        .collect();
+
+    let list = List::new(items).block(block);
+    frame.render_widget(list, area);
 }
 
 fn draw_help(frame: &mut Frame, app: &App, area: Rect) {

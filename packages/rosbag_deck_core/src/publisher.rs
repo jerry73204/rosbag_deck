@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::{types::QosPreset, Result};
 
@@ -32,6 +32,8 @@ pub struct PublisherManager {
     qos_depth: usize,
     qos_preset: QosPreset,
     enabled: bool,
+    /// Topics that failed publisher creation — skip on subsequent messages.
+    failed_topics: HashSet<String>,
 }
 
 impl PublisherManager {
@@ -47,6 +49,7 @@ impl PublisherManager {
             qos_depth,
             qos_preset,
             enabled: true,
+            failed_topics: HashSet::new(),
         }
     }
 
@@ -76,12 +79,18 @@ impl PublisherManager {
         if self.qos_preset != preset {
             self.qos_preset = preset;
             self.publishers.clear();
+            self.failed_topics.clear();
         }
     }
 
     /// Ensure a publisher exists for the topic and publish data.
     pub fn ensure_and_publish(&mut self, topic: &str, type_name: &str, data: &[u8]) {
         if !self.enabled {
+            return;
+        }
+
+        // Skip topics that previously failed publisher creation.
+        if self.failed_topics.contains(topic) {
             return;
         }
 
@@ -96,6 +105,7 @@ impl PublisherManager {
                 }
                 Err(e) => {
                     tracing::warn!(%topic, %e, "failed to create publisher");
+                    self.failed_topics.insert(topic.to_string());
                     return;
                 }
             }
