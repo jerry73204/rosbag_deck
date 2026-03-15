@@ -153,5 +153,10 @@ unsafe extern "C" {
     ) -> ::core::ffi::c_int;
 }
 unsafe extern "C" {
+    pub fn rosbag2_type_has_header_first(
+        type_name: *const ::core::ffi::c_char,
+    ) -> ::core::ffi::c_int;
+}
+unsafe extern "C" {
     pub fn rosbag2_last_error() -> *const ::core::ffi::c_char;
 }

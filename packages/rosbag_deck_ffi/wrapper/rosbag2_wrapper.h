@@ -121,6 +121,15 @@ int rosbag2_writer_write(Rosbag2Writer *writer,
                          const uint8_t *data,
                          size_t data_len);
 
+/*
+ * Check if a message type has std_msgs/msg/Header as its first field.
+ * Uses ROS 2 runtime type introspection via dlopen/dlsym.
+ *
+ * @param type_name  Fully qualified type name (e.g., "sensor_msgs/msg/Image").
+ * @return           1 if yes, 0 if no, -1 on error.
+ */
+int rosbag2_type_has_header_first(const char *type_name);
+
 /* Returns the last error message, or NULL if no error. Thread-local. */
 const char *rosbag2_last_error(void);
 

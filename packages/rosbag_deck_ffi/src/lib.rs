@@ -232,6 +232,21 @@ impl BagWriter for Rosbag2Writer {
     }
 }
 
+/// Check whether a message type has `std_msgs/msg/Header` as its first field.
+///
+/// Uses ROS 2 runtime type introspection via `dlopen`/`dlsym`.
+pub fn type_has_header_first(type_name: &str) -> Result<bool> {
+    let c_name =
+        CString::new(type_name).map_err(|e| Error::Ffi(format!("type name null byte: {e}")))?;
+
+    let rc = unsafe { sys::rosbag2_type_has_header_first(c_name.as_ptr()) };
+    match rc {
+        1 => Ok(true),
+        0 => Ok(false),
+        _ => Err(Error::Ffi(last_error())),
+    }
+}
+
 /// Read metadata from an open reader handle.
 fn read_metadata(handle: *mut sys::Rosbag2Reader) -> Result<BagMetadata> {
     let mut raw = sys::Rosbag2Metadata {

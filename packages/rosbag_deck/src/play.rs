@@ -1,7 +1,7 @@
 use std::{collections::HashSet, path::PathBuf};
 
 use regex::Regex;
-use rosbag_deck_core::{BagReader, Deck, DeckConfig, PlaybackMode};
+use rosbag_deck_core::{BagReader, Deck, DeckConfig, LoopMode, PlaybackMode};
 use rosbag_deck_ffi::Rosbag2Reader;
 
 pub struct PlayOpts {
@@ -11,7 +11,7 @@ pub struct PlayOpts {
     pub topics: Option<Vec<String>>,
     pub regex: Option<String>,
     pub exclude: Option<String>,
-    pub looping: bool,
+    pub loop_mode: LoopMode,
 }
 
 /// Open the bag and create a Deck from PlayOpts.
@@ -34,7 +34,12 @@ pub fn open_deck(opts: &PlayOpts) -> anyhow::Result<Deck> {
     let mut deck = Deck::open(readers, DeckConfig::default())?;
 
     deck.set_speed(opts.rate);
-    deck.set_looping(opts.looping);
+    deck.set_loop_mode(opts.loop_mode);
+
+    // Populate header cache for monotonic loop mode.
+    if opts.loop_mode == LoopMode::Monotonic {
+        deck.populate_header_cache(|t| rosbag_deck_ffi::type_has_header_first(t).unwrap_or(false));
+    }
 
     let filter = resolve_topic_filter(
         &deck.topic_names(),

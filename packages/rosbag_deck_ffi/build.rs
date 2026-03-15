@@ -68,6 +68,7 @@ fn main() {
     println!("cargo:rustc-link-lib=dylib=rosbag2_cpp");
     println!("cargo:rustc-link-lib=dylib=rosbag2_storage");
     println!("cargo:rustc-link-lib=dylib=rcutils");
+    println!("cargo:rustc-link-lib=dylib=dl");
 
     // Optionally regenerate src/sys.rs from the C header via bindgen.
     #[cfg(feature = "generate-bindings")]

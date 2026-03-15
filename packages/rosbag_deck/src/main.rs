@@ -47,9 +47,13 @@ enum Command {
         /// Disable TUI, run headless playback.
         #[arg(long)]
         no_tui: bool,
-        /// Loop playback.
-        #[arg(long, short)]
-        r#loop: bool,
+        /// Loop mode: off, restart, or monotonic.
+        ///
+        /// "restart" loops with original timestamps. "monotonic" shifts
+        /// Header.stamp forward each iteration so timestamps never decrease.
+        /// Use `--loop` alone for "restart" (backward compatible).
+        #[arg(long, short, default_value = "off", default_missing_value = "restart", num_args = 0..=1)]
+        r#loop: String,
     },
     /// Edit bag files: slice, merge, filter, and transform timestamps.
     Edit {
@@ -148,6 +152,15 @@ fn main() -> anyhow::Result<()> {
             no_tui,
             r#loop,
         } => {
+            let loop_mode = match r#loop.as_str() {
+                "off" => rosbag_deck_core::LoopMode::Off,
+                "restart" => rosbag_deck_core::LoopMode::Restart,
+                "monotonic" => rosbag_deck_core::LoopMode::Monotonic,
+                other => anyhow::bail!(
+                    "invalid --loop value '{}': expected off, restart, or monotonic",
+                    other
+                ),
+            };
             let opts = play::PlayOpts {
                 bag_path,
                 storage,
@@ -155,7 +168,7 @@ fn main() -> anyhow::Result<()> {
                 topics,
                 regex,
                 exclude,
-                looping: r#loop,
+                loop_mode,
             };
 
             if no_tui {

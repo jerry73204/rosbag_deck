@@ -5,8 +5,11 @@ use crate::{
     index::IndexManager,
     reader::BagReader,
     registry::MessageTypeRegistry,
+    stamp,
     timeline::VirtualTimeline,
-    types::{BagMetadata, DeckConfig, PlaybackMode, PlaybackState, TimedMessage, TopicInfo},
+    types::{
+        BagMetadata, DeckConfig, LoopMode, PlaybackMode, PlaybackState, TimedMessage, TopicInfo,
+    },
     worker::{BagWorkerHandle, WorkerCommand, WorkerEvent},
     Error, Result,
 };
@@ -180,7 +183,8 @@ impl Deck {
         self.timeline.advance_segment();
         self.ensure_cache_near_cursor();
 
-        if let Some(msg) = self.cache.get_at(self.cursor_ns, self.cursor_sub) {
+        if let Some(mut msg) = self.cache.get_at(self.cursor_ns, self.cursor_sub) {
+            self.maybe_patch_stamp(&mut msg);
             let timed = TimedMessage {
                 message: msg,
                 segment_id: self.timeline.segment_id(),
@@ -195,7 +199,8 @@ impl Deck {
         {
             self.cursor_ns = next_ts;
             self.cursor_sub = next_sub;
-            if let Some(msg) = self.cache.get_at(next_ts, next_sub) {
+            if let Some(mut msg) = self.cache.get_at(next_ts, next_sub) {
+                self.maybe_patch_stamp(&mut msg);
                 let timed = TimedMessage {
                     message: msg,
                     segment_id: self.timeline.segment_id(),
@@ -238,8 +243,20 @@ impl Deck {
         self.timeline.set_mode(mode);
     }
 
+    pub fn set_loop_mode(&mut self, mode: LoopMode) {
+        self.timeline.set_loop_mode(mode);
+    }
+
     pub fn set_looping(&mut self, looping: bool) {
         self.timeline.set_looping(looping);
+    }
+
+    pub fn loop_mode(&self) -> LoopMode {
+        self.timeline.loop_mode()
+    }
+
+    pub fn loop_iteration(&self) -> u64 {
+        self.timeline.loop_iteration()
     }
 
     pub fn set_topic_filter(&mut self, filter: Option<HashSet<String>>) {
@@ -289,11 +306,11 @@ impl Deck {
                 None => {
                     // Check for end of bag.
                     if let Some(wrapped_ts) = self.timeline.check_end(self.cursor_ns) {
-                        // Looping — seek back to start.
+                        // Looping — seek workers back to start and refill cache.
                         self.cursor_ns = wrapped_ts;
                         self.cursor_sub = 0;
                         self.cache.clear();
-                        self.prefetch_all(self.cache.prefetch_ahead());
+                        self.seek_workers(wrapped_ts);
                         continue;
                     }
                     return Ok(None);
@@ -310,6 +327,9 @@ impl Deck {
             if let Some(delay) = self.timeline.delay_until(msg.timestamp_ns) {
                 std::thread::sleep(delay);
             }
+
+            let mut msg = msg;
+            self.maybe_patch_stamp(&mut msg);
 
             let timed = TimedMessage {
                 message: msg,
@@ -344,7 +364,7 @@ impl Deck {
                         self.cursor_ns = wrapped_ts;
                         self.cursor_sub = 0;
                         self.cache.clear();
-                        self.prefetch_all(self.cache.prefetch_ahead());
+                        self.seek_workers(wrapped_ts);
                         continue;
                     }
                     return Ok(None);
@@ -361,6 +381,9 @@ impl Deck {
             if self.timeline.delay_until(msg.timestamp_ns).is_some() {
                 return Ok(None);
             }
+
+            let mut msg = msg;
+            self.maybe_patch_stamp(&mut msg);
 
             let timed = TimedMessage {
                 message: msg,
@@ -532,6 +555,18 @@ impl Deck {
         self.drain_events_nonblocking();
     }
 
+    /// Seek all workers to a timestamp and wait for completion.
+    fn seek_workers(&self, timestamp_ns: i64) {
+        self.drain_events_nonblocking();
+        let bags = self.index.bags_containing(timestamp_ns);
+        for worker in &self.workers {
+            if bags.is_empty() || bags.contains(&worker.bag_id) {
+                let _ = worker.send(WorkerCommand::Seek { timestamp_ns });
+            }
+        }
+        self.drain_until_seek_complete(&bags);
+    }
+
     fn drain_events_nonblocking(&self) {
         for worker in &self.workers {
             while let Some(event) = worker.try_recv() {
@@ -540,6 +575,30 @@ impl Deck {
                 }
             }
         }
+    }
+
+    /// Populate the registry's header cache using a checker function.
+    ///
+    /// Call this after `open()` with an FFI checker like:
+    /// `deck.populate_header_cache(|t| ffi::type_has_header_first(t).unwrap_or(false))`
+    pub fn populate_header_cache(&mut self, checker: impl Fn(&str) -> bool) {
+        self.registry.populate_header_cache(checker);
+    }
+
+    /// Patch CDR Header.stamp and message timestamp if in Monotonic loop mode.
+    fn maybe_patch_stamp(&self, msg: &mut crate::types::RawMessage) {
+        let iteration = self.timeline.loop_iteration();
+        if self.timeline.loop_mode() != LoopMode::Monotonic || iteration == 0 {
+            return;
+        }
+
+        let offset_ns = iteration as i64 * self.timeline.bag_duration_ns();
+
+        if self.registry.has_header_first(&msg.topic) {
+            stamp::patch_header_stamp(&mut msg.data, offset_ns);
+        }
+
+        msg.timestamp_ns += offset_ns;
     }
 }
 

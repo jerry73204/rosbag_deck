@@ -14,7 +14,7 @@ use crossterm::{
 };
 use ratatui::prelude::*;
 
-use rosbag_deck_core::{PlaybackState, TimedMessage};
+use rosbag_deck_core::{LoopMode, PlaybackState, TimedMessage};
 
 use crate::play::{self, PlayOpts};
 
@@ -282,7 +282,18 @@ impl App {
                 self.status_message = Some("Seek to (seconds or MM:SS):".into());
             }
             KeyCode::Char('o') | KeyCode::Char('O') => {
-                self.deck.set_looping(!self.deck.looping());
+                let next = match self.deck.loop_mode() {
+                    LoopMode::Off => LoopMode::Restart,
+                    LoopMode::Restart => {
+                        // Populate header cache on first switch to Monotonic.
+                        self.deck.populate_header_cache(|t| {
+                            rosbag_deck_ffi::type_has_header_first(t).unwrap_or(false)
+                        });
+                        LoopMode::Monotonic
+                    }
+                    LoopMode::Monotonic => LoopMode::Off,
+                };
+                self.deck.set_loop_mode(next);
             }
             KeyCode::Char('t') | KeyCode::Char('T') => {
                 self.topic_panel = Some(TopicPanel::new(&self.deck));

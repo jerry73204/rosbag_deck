@@ -5,10 +5,16 @@
 #include <rosbag2_storage/storage_filter.hpp>
 #include <rosbag2_storage/storage_options.hpp>
 
+#include <rosidl_typesupport_introspection_c/field_types.h>
+#include <rosidl_typesupport_introspection_c/message_introspection.h>
+
 #include <cstdlib>
 #include <cstring>
+#include <dlfcn.h>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <unordered_map>
 
 /* Per-reader error message. */
 struct Rosbag2Reader {
@@ -21,6 +27,11 @@ struct Rosbag2Reader {
 static thread_local std::string g_last_error;
 
 static void set_error(const std::string &msg) { g_last_error = msg; }
+
+static const char *safe_dlerror() {
+    const char *err = dlerror();
+    return err ? err : "unknown dl error";
+}
 
 static char *strdup_safe(const std::string &s) { return strdup(s.c_str()); }
 
@@ -305,6 +316,129 @@ int rosbag2_writer_write(Rosbag2Writer *writer,
         return 0;
     } catch (const std::exception &e) {
         set_error(std::string("write failed: ") + e.what());
+        return -1;
+    }
+}
+
+/* ----- Type introspection ----- */
+
+/* Cache for dlopen handles keyed by library name. */
+static std::mutex g_dl_mutex;
+static std::unordered_map<std::string, void *> g_dl_cache;
+
+static void *cached_dlopen(const std::string &lib_name) {
+    std::lock_guard<std::mutex> lock(g_dl_mutex);
+    auto it = g_dl_cache.find(lib_name);
+    if (it != g_dl_cache.end()) {
+        return it->second;
+    }
+    void *handle = dlopen(lib_name.c_str(), RTLD_NOW | RTLD_GLOBAL);
+    g_dl_cache[lib_name] = handle; // cache even if null
+    return handle;
+}
+
+int rosbag2_type_has_header_first(const char *type_name) {
+    if (!type_name) {
+        set_error("null type_name");
+        return -1;
+    }
+
+    try {
+        // Parse "pkg/msg/Type" -> package="pkg", type="Type"
+        std::string full(type_name);
+        auto slash1 = full.find('/');
+        if (slash1 == std::string::npos) {
+            set_error("invalid type_name format, expected pkg/msg/Type");
+            return -1;
+        }
+        auto slash2 = full.find('/', slash1 + 1);
+        if (slash2 == std::string::npos) {
+            set_error("invalid type_name format, expected pkg/msg/Type");
+            return -1;
+        }
+
+        std::string package = full.substr(0, slash1);
+        std::string msg_type = full.substr(slash2 + 1);
+
+        // Build library name for introspection typesupport
+        std::string lib_name = "lib" + package +
+            "__rosidl_typesupport_introspection_c.so";
+
+        void *handle = cached_dlopen(lib_name);
+        if (!handle) {
+            set_error("dlopen failed for " + lib_name + ": " + safe_dlerror());
+            return -1;
+        }
+
+        // Build symbol name:
+        // rosidl_typesupport_introspection_c__get_message_type_support_handle__pkg__msg__Type
+        std::string symbol =
+            "rosidl_typesupport_introspection_c__get_message_type_support_handle__" +
+            package + "__msg__" + msg_type;
+
+        using GetHandleFn = const rosidl_message_type_support_t *(*)();
+        auto get_handle = reinterpret_cast<GetHandleFn>(dlsym(handle, symbol.c_str()));
+        if (!get_handle) {
+            set_error("dlsym failed for " + symbol + ": " + safe_dlerror());
+            return -1;
+        }
+
+        const rosidl_message_type_support_t *ts = get_handle();
+        if (!ts || !ts->data) {
+            set_error("type support handle returned null");
+            return -1;
+        }
+
+        auto *members = static_cast<const rosidl_typesupport_introspection_c__MessageMembers *>(
+            ts->data);
+        if (!members || members->member_count_ == 0) {
+            return 0;
+        }
+
+        if (!members->members_) {
+            return 0;
+        }
+
+        const auto &first = members->members_[0];
+
+        // Check that first field is a nested message type
+        if (first.type_id_ != rosidl_typesupport_introspection_c__ROS_TYPE_MESSAGE) {
+            return 0;
+        }
+
+        // Get the nested type's type support to check namespace/name.
+        // first.members_ points to the rosidl_message_type_support_t for the nested type.
+        if (!first.members_) {
+            return 0;
+        }
+        const rosidl_message_type_support_t *nested_ts = first.members_;
+        if (!nested_ts->data) {
+            return 0;
+        }
+
+        auto *nested_members =
+            static_cast<const rosidl_typesupport_introspection_c__MessageMembers *>(
+                nested_ts->data);
+        if (!nested_members) {
+            return 0;
+        }
+
+        // Check if nested type is std_msgs::msg::Header
+        if (nested_members->message_namespace_ &&
+            nested_members->message_name_) {
+            std::string ns(nested_members->message_namespace_);
+            std::string name(nested_members->message_name_);
+            if (ns == "std_msgs__msg" && name == "Header") {
+                return 1;
+            }
+        }
+
+        return 0;
+    } catch (const std::exception &e) {
+        set_error(std::string("type_has_header_first failed: ") + e.what());
+        return -1;
+    } catch (...) {
+        set_error("type_has_header_first failed: unknown exception");
         return -1;
     }
 }

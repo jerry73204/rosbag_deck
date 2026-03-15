@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use crate::types::{PlaybackMode, PlaybackState};
+use crate::types::{LoopMode, PlaybackMode, PlaybackState};
 
 /// Maps wall-clock time to bag time for playback pacing.
 ///
@@ -13,7 +13,8 @@ pub struct VirtualTimeline {
     mode: PlaybackMode,
     state: PlaybackState,
     segment_id: u64,
-    looping: bool,
+    loop_mode: LoopMode,
+    loop_iteration: u64,
     bag_start_ns: i64,
     bag_end_ns: i64,
 }
@@ -27,7 +28,8 @@ impl VirtualTimeline {
             mode: PlaybackMode::RealTime,
             state: PlaybackState::Stopped,
             segment_id: 0,
-            looping: false,
+            loop_mode: LoopMode::Off,
+            loop_iteration: 0,
             bag_start_ns,
             bag_end_ns,
         }
@@ -53,9 +55,19 @@ impl VirtualTimeline {
         self.mode
     }
 
-    /// Whether looping is enabled.
+    /// Current loop mode.
+    pub fn loop_mode(&self) -> LoopMode {
+        self.loop_mode
+    }
+
+    /// Current loop iteration (0 on first pass, incremented on each wrap).
+    pub fn loop_iteration(&self) -> u64 {
+        self.loop_iteration
+    }
+
+    /// Whether looping is enabled (convenience: loop_mode != Off).
     pub fn looping(&self) -> bool {
-        self.looping
+        self.loop_mode != LoopMode::Off
     }
 
     /// Bag start timestamp.
@@ -96,11 +108,12 @@ impl VirtualTimeline {
         }
     }
 
-    /// Seek to a bag timestamp. Increments segment_id.
+    /// Seek to a bag timestamp. Increments segment_id and resets loop iteration.
     pub fn seek(&mut self, bag_ns: i64) {
         self.bag_anchor_ns = bag_ns;
         self.wall_anchor = Instant::now();
         self.segment_id += 1;
+        self.loop_iteration = 0;
     }
 
     /// Advance segment ID (e.g., on step). Returns the new segment ID.
@@ -122,9 +135,26 @@ impl VirtualTimeline {
         self.mode = mode;
     }
 
-    /// Set looping.
+    /// Set loop mode.
+    pub fn set_loop_mode(&mut self, mode: LoopMode) {
+        self.loop_mode = mode;
+        if mode == LoopMode::Off {
+            self.loop_iteration = 0;
+        }
+    }
+
+    /// Set looping (convenience: maps bool to Restart/Off).
     pub fn set_looping(&mut self, looping: bool) {
-        self.looping = looping;
+        self.set_loop_mode(if looping {
+            LoopMode::Restart
+        } else {
+            LoopMode::Off
+        });
+    }
+
+    /// Bag duration in nanoseconds.
+    pub fn bag_duration_ns(&self) -> i64 {
+        self.bag_end_ns - self.bag_start_ns
     }
 
     /// Compute the current bag time based on elapsed wall-clock time.
@@ -159,12 +189,17 @@ impl VirtualTimeline {
         Some(Duration::from_nanos(wall_ns as u64))
     }
 
-    /// Check if a bag timestamp is past the end. If looping, wraps to start
-    /// and returns the wrapped timestamp. Returns `None` if not past end.
+    /// Check if a bag timestamp is past the end. If looping (Restart or
+    /// Monotonic), wraps to start and returns the wrapped timestamp.
+    /// Returns `None` if not past end.
     pub fn check_end(&mut self, timestamp_ns: i64) -> Option<i64> {
         if timestamp_ns > self.bag_end_ns {
-            if self.looping {
-                self.seek(self.bag_start_ns);
+            if self.looping() {
+                self.loop_iteration += 1;
+                // Use internal seek logic without resetting loop_iteration.
+                self.bag_anchor_ns = self.bag_start_ns;
+                self.wall_anchor = Instant::now();
+                self.segment_id += 1;
                 Some(self.bag_start_ns)
             } else {
                 self.stop();
@@ -261,5 +296,65 @@ mod tests {
         let wrapped = tl.check_end(6000);
         assert_eq!(wrapped, Some(1000));
         assert_eq!(tl.state(), PlaybackState::Playing);
+    }
+
+    #[test]
+    fn test_loop_iteration_increments() {
+        let mut tl = VirtualTimeline::new(1000, 5000);
+        tl.set_loop_mode(LoopMode::Monotonic);
+        tl.play();
+
+        assert_eq!(tl.loop_iteration(), 0);
+
+        tl.check_end(6000);
+        assert_eq!(tl.loop_iteration(), 1);
+
+        tl.check_end(6000);
+        assert_eq!(tl.loop_iteration(), 2);
+    }
+
+    #[test]
+    fn test_seek_resets_loop_iteration() {
+        let mut tl = VirtualTimeline::new(1000, 5000);
+        tl.set_loop_mode(LoopMode::Monotonic);
+        tl.play();
+
+        tl.check_end(6000);
+        assert_eq!(tl.loop_iteration(), 1);
+
+        tl.seek(2000);
+        assert_eq!(tl.loop_iteration(), 0);
+    }
+
+    #[test]
+    fn test_bag_duration_ns() {
+        let tl = VirtualTimeline::new(1000, 5000);
+        assert_eq!(tl.bag_duration_ns(), 4000);
+    }
+
+    #[test]
+    fn test_loop_mode_off_stops_at_end() {
+        let mut tl = VirtualTimeline::new(1000, 5000);
+        tl.set_loop_mode(LoopMode::Off);
+        tl.play();
+
+        let wrapped = tl.check_end(6000);
+        assert_eq!(wrapped, None);
+        assert_eq!(tl.state(), PlaybackState::Stopped);
+    }
+
+    #[test]
+    fn test_looping_convenience() {
+        let mut tl = VirtualTimeline::new(0, 1000);
+        assert!(!tl.looping());
+
+        tl.set_loop_mode(LoopMode::Restart);
+        assert!(tl.looping());
+
+        tl.set_loop_mode(LoopMode::Monotonic);
+        assert!(tl.looping());
+
+        tl.set_loop_mode(LoopMode::Off);
+        assert!(!tl.looping());
     }
 }

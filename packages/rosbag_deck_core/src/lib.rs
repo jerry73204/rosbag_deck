@@ -5,6 +5,7 @@ pub mod error;
 pub mod index;
 pub mod reader;
 pub mod registry;
+pub mod stamp;
 pub mod timeline;
 pub mod types;
 pub mod worker;
@@ -13,7 +14,8 @@ pub mod writer;
 pub use error::{Error, Result};
 pub use reader::BagReader;
 pub use types::{
-    BagMetadata, DeckConfig, PlaybackMode, PlaybackState, RawMessage, TimedMessage, TopicInfo,
+    BagMetadata, DeckConfig, LoopMode, PlaybackMode, PlaybackState, RawMessage, TimedMessage,
+    TopicInfo,
 };
 
 pub use cache::MessageCache;

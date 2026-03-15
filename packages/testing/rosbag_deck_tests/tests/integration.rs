@@ -30,3 +30,6 @@ mod bag_edit;
 
 #[path = "integration/bag_large.rs"]
 mod bag_large;
+
+#[path = "integration/loop_mode.rs"]
+mod loop_mode;

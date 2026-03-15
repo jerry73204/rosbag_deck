@@ -9,6 +9,8 @@ use crate::types::{BagMetadata, TopicInfo};
 pub struct MessageTypeRegistry {
     topics: HashMap<String, TopicInfo>,
     filter: Option<HashSet<String>>,
+    /// Cache: type_name -> has Header as first field.
+    has_header: HashMap<String, bool>,
 }
 
 impl MessageTypeRegistry {
@@ -25,6 +27,7 @@ impl MessageTypeRegistry {
         Self {
             topics,
             filter: None,
+            has_header: HashMap::new(),
         }
     }
 
@@ -55,6 +58,30 @@ impl MessageTypeRegistry {
     /// All known topic names.
     pub fn topic_names(&self) -> impl Iterator<Item = &str> {
         self.topics.keys().map(|s| s.as_str())
+    }
+
+    /// Populate the header-first cache using a checker function.
+    ///
+    /// The checker receives a type name (e.g., "sensor_msgs/msg/Image") and
+    /// returns whether it has `std_msgs/msg/Header` as its first field.
+    pub fn populate_header_cache(&mut self, checker: impl Fn(&str) -> bool) {
+        let mut type_names: HashSet<&str> = HashSet::new();
+        for info in self.topics.values() {
+            type_names.insert(&info.type_name);
+        }
+        for type_name in type_names {
+            let result = checker(type_name);
+            self.has_header.insert(type_name.to_string(), result);
+        }
+    }
+
+    /// Check if a topic's message type has `Header` as its first field.
+    pub fn has_header_first(&self, topic: &str) -> bool {
+        self.topics
+            .get(topic)
+            .and_then(|info| self.has_header.get(&info.type_name))
+            .copied()
+            .unwrap_or(false)
     }
 }
 

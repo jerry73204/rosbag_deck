@@ -3,7 +3,7 @@ use ratatui::{
     widgets::{Block, Borders, Clear, Gauge, List, ListItem, Paragraph, Row, Table},
 };
 
-use rosbag_deck_core::PlaybackState;
+use rosbag_deck_core::{LoopMode, PlaybackState};
 
 use super::App;
 
@@ -34,10 +34,19 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
     let dur = meta.duration;
     let secs = dur.as_secs();
 
+    let iteration = app.deck.loop_iteration();
+    let loop_label = match app.deck.loop_mode() {
+        LoopMode::Off => "Once".to_string(),
+        LoopMode::Restart if iteration > 0 => format!("Loop #{}", iteration + 1),
+        LoopMode::Restart => "Loop".to_string(),
+        LoopMode::Monotonic if iteration > 0 => format!("Loop+Mono #{}", iteration + 1),
+        LoopMode::Monotonic => "Loop+Mono".to_string(),
+    };
+
     let text = format!(
         " {}  |  {}  |  {:02}:{:02}:{:02}  |  {} messages  |  {} topics",
         meta.storage_identifier,
-        if app.deck.looping() { "Loop" } else { "Once" },
+        loop_label,
         secs / 3600,
         (secs % 3600) / 60,
         secs % 60,

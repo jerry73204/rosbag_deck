@@ -50,6 +50,19 @@ pub struct TimedMessage {
     pub segment_id: u64,
 }
 
+/// Loop mode for playback.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LoopMode {
+    /// No looping — stop at end.
+    #[default]
+    Off,
+    /// Restart from beginning, keeping original timestamps.
+    Restart,
+    /// Restart from beginning, shifting Header.stamp forward each iteration
+    /// so timestamps remain monotonically increasing.
+    Monotonic,
+}
+
 /// Playback mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlaybackMode {
