@@ -66,7 +66,6 @@ fn play_no_tui_talker() {
     let output = cli()
         .arg("play")
         .arg(path.to_str().unwrap())
-        .arg("--no-tui")
         .timeout(std::time::Duration::from_secs(10))
         .assert()
         .success();
@@ -84,7 +83,6 @@ fn play_no_tui_with_topic_filter() {
     let output = cli()
         .arg("play")
         .arg(path.to_str().unwrap())
-        .arg("--no-tui")
         .arg("--topics")
         .arg("/topic")
         .timeout(std::time::Duration::from_secs(10))

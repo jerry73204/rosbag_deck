@@ -44,9 +44,9 @@ enum Command {
         /// Exclude topics matching a name or regex pattern.
         #[arg(long, short, value_name = "PATTERN")]
         exclude: Option<String>,
-        /// Disable TUI, run headless playback.
+        /// Enable interactive TUI mode.
         #[arg(long)]
-        no_tui: bool,
+        tui: bool,
         /// Loop mode: off, restart, or monotonic.
         ///
         /// "restart" loops with original timestamps. "monotonic" shifts
@@ -161,7 +161,7 @@ fn main() -> anyhow::Result<()> {
             topics,
             regex,
             exclude,
-            no_tui,
+            tui,
             r#loop,
             no_publish,
             node_name,
@@ -200,19 +200,17 @@ fn main() -> anyhow::Result<()> {
                 qos_preset,
             };
 
-            if no_tui {
-                play::run_headless(&opts)
-            } else {
+            if tui {
                 #[cfg(feature = "tui")]
                 {
                     tui::run(&opts)
                 }
                 #[cfg(not(feature = "tui"))]
                 {
-                    anyhow::bail!(
-                        "TUI support not compiled. Use --no-tui or rebuild with the 'tui' feature."
-                    );
+                    anyhow::bail!("TUI support not compiled. Rebuild with the 'tui' feature.");
                 }
+            } else {
+                play::run_headless(&opts)
             }
         }
     }
