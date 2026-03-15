@@ -157,6 +157,48 @@ unsafe extern "C" {
         type_name: *const ::core::ffi::c_char,
     ) -> ::core::ffi::c_int;
 }
+
+// --- ROS 2 Node / Publisher API ---
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct Rosbag2Node {
+    _unused: [u8; 0],
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct Rosbag2Publisher {
+    _unused: [u8; 0],
+}
+unsafe extern "C" {
+    pub fn rosbag2_node_create(node_name: *const ::core::ffi::c_char) -> *mut Rosbag2Node;
+}
+unsafe extern "C" {
+    pub fn rosbag2_node_destroy(node: *mut Rosbag2Node);
+}
+unsafe extern "C" {
+    pub fn rosbag2_node_spin_some(node: *mut Rosbag2Node);
+}
+unsafe extern "C" {
+    pub fn rosbag2_node_create_publisher(
+        node: *mut Rosbag2Node,
+        topic: *const ::core::ffi::c_char,
+        type_name: *const ::core::ffi::c_char,
+        qos_depth: usize,
+        reliable: bool,
+    ) -> *mut Rosbag2Publisher;
+}
+unsafe extern "C" {
+    pub fn rosbag2_node_destroy_publisher(pub_handle: *mut Rosbag2Publisher);
+}
+unsafe extern "C" {
+    pub fn rosbag2_node_publish(
+        pub_handle: *mut Rosbag2Publisher,
+        data: *const u8,
+        data_len: usize,
+    ) -> ::core::ffi::c_int;
+}
+
 unsafe extern "C" {
     pub fn rosbag2_last_error() -> *const ::core::ffi::c_char;
 }

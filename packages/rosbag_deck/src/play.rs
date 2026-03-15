@@ -1,7 +1,7 @@
 use std::{collections::HashSet, path::PathBuf};
 
 use regex::Regex;
-use rosbag_deck_core::{BagReader, Deck, DeckConfig, LoopMode, PlaybackMode};
+use rosbag_deck_core::{BagReader, Deck, DeckConfig, LoopMode, PlaybackMode, QosPreset};
 use rosbag_deck_ffi::Rosbag2Reader;
 
 pub struct PlayOpts {
@@ -12,6 +12,10 @@ pub struct PlayOpts {
     pub regex: Option<String>,
     pub exclude: Option<String>,
     pub loop_mode: LoopMode,
+    pub publish: bool,
+    pub node_name: String,
+    pub qos_depth: usize,
+    pub qos_preset: QosPreset,
 }
 
 /// Open the bag and create a Deck from PlayOpts.
@@ -39,6 +43,29 @@ pub fn open_deck(opts: &PlayOpts) -> anyhow::Result<Deck> {
     // Populate header cache for monotonic loop mode.
     if opts.loop_mode == LoopMode::Monotonic {
         deck.populate_header_cache(|t| rosbag_deck_ffi::type_has_header_first(t).unwrap_or(false));
+    }
+
+    // Set up ROS 2 topic publishing.
+    if opts.publish {
+        match rosbag_deck_ffi::RosPublisherBackend::new(&opts.node_name) {
+            Ok(backend) => {
+                let manager = rosbag_deck_core::PublisherManager::new(
+                    Box::new(backend),
+                    opts.qos_depth,
+                    opts.qos_preset,
+                );
+                deck.enable_publishing(manager);
+                eprintln!(
+                    "Publishing enabled (node: {}, QoS: {})",
+                    opts.node_name,
+                    opts.qos_preset.label(),
+                );
+            }
+            Err(e) => {
+                eprintln!("Warning: failed to create ROS 2 node: {e}");
+                eprintln!("Publishing disabled. Is ROS 2 running?");
+            }
+        }
     }
 
     let filter = resolve_topic_filter(

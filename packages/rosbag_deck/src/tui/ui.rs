@@ -43,16 +43,32 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
         LoopMode::Monotonic => "Loop+Mono".to_string(),
     };
 
-    let text = format!(
-        " {}  |  {}  |  {:02}:{:02}:{:02}  |  {} messages  |  {} topics",
-        meta.storage_identifier,
-        loop_label,
-        secs / 3600,
-        (secs % 3600) / 60,
-        secs % 60,
-        meta.message_count,
-        meta.topics.len(),
-    );
+    let pub_label = if app.deck.is_publishing() { "Pub" } else { "" };
+
+    let text = if pub_label.is_empty() {
+        format!(
+            " {}  |  {}  |  {:02}:{:02}:{:02}  |  {} messages  |  {} topics",
+            meta.storage_identifier,
+            loop_label,
+            secs / 3600,
+            (secs % 3600) / 60,
+            secs % 60,
+            meta.message_count,
+            meta.topics.len(),
+        )
+    } else {
+        format!(
+            " {}  |  {}  |  {}  |  {:02}:{:02}:{:02}  |  {} messages  |  {} topics",
+            meta.storage_identifier,
+            loop_label,
+            pub_label,
+            secs / 3600,
+            (secs % 3600) / 60,
+            secs % 60,
+            meta.message_count,
+            meta.topics.len(),
+        )
+    };
 
     let block = Block::default()
         .title(" RosBag Deck ")
@@ -148,7 +164,8 @@ fn draw_help(frame: &mut Frame, app: &App, area: Rect) {
     } else if let Some(ref msg) = app.status_message {
         msg.clone()
     } else {
-        "Space:Play/Pause  s:Stop  ←→:Step  ±:Speed  g:Seek  o:Loop  t:Topics  q:Quit".into()
+        "Space:Play/Pause  s:Stop  ←→:Step  ±:Speed  g:Seek  o:Loop  p:Pub  Q:QoS  t:Topics  q:Quit"
+            .into()
     };
 
     let paragraph = Paragraph::new(text).style(Style::default().fg(Color::DarkGray));

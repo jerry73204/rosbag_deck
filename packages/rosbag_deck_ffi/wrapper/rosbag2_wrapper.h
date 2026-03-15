@@ -130,6 +130,61 @@ int rosbag2_writer_write(Rosbag2Writer *writer,
  */
 int rosbag2_type_has_header_first(const char *type_name);
 
+/* ----- ROS 2 Node / Publisher API ----- */
+
+/* Opaque handle to a ROS 2 node (rclcpp::Node + executor). */
+typedef struct Rosbag2Node Rosbag2Node;
+
+/* Opaque handle to a generic publisher. */
+typedef struct Rosbag2Publisher Rosbag2Publisher;
+
+/*
+ * Create a ROS 2 node. Initializes rclcpp if needed.
+ *
+ * @param node_name  Name for the ROS 2 node.
+ * @return           Node handle, or NULL on failure.
+ */
+Rosbag2Node *rosbag2_node_create(const char *node_name);
+
+/* Destroy a node and all its publishers. Safe to call with NULL. */
+void rosbag2_node_destroy(Rosbag2Node *node);
+
+/* Non-blocking spin for DDS discovery and graph updates. */
+void rosbag2_node_spin_some(Rosbag2Node *node);
+
+/*
+ * Create a generic publisher on the node.
+ *
+ * @param node       Node handle.
+ * @param topic      Topic name (e.g., "/camera/image_raw").
+ * @param type_name  Message type (e.g., "sensor_msgs/msg/Image").
+ * @param qos_depth  History depth for KEEP_LAST.
+ * @param reliable   true for RELIABLE, false for BEST_EFFORT.
+ * @return           Publisher handle, or NULL on failure.
+ */
+Rosbag2Publisher *rosbag2_node_create_publisher(
+    Rosbag2Node *node,
+    const char *topic,
+    const char *type_name,
+    size_t qos_depth,
+    bool reliable);
+
+/* Destroy a publisher. Safe to call with NULL. */
+void rosbag2_node_destroy_publisher(Rosbag2Publisher *pub_handle);
+
+/*
+ * Publish serialized CDR data on a publisher.
+ *
+ * @param pub_handle  Publisher handle.
+ * @param data        Serialized CDR bytes.
+ * @param data_len    Length of data.
+ * @return            0 on success, -1 on error.
+ */
+int rosbag2_node_publish(
+    Rosbag2Publisher *pub_handle,
+    const uint8_t *data,
+    size_t data_len);
+
 /* Returns the last error message, or NULL if no error. Thread-local. */
 const char *rosbag2_last_error(void);
 

@@ -3,12 +3,14 @@ use std::{collections::HashSet, sync::Arc, time::Duration};
 use crate::{
     cache::{CacheConfig, MessageCache},
     index::IndexManager,
+    publisher::PublisherManager,
     reader::BagReader,
     registry::MessageTypeRegistry,
     stamp,
     timeline::VirtualTimeline,
     types::{
-        BagMetadata, DeckConfig, LoopMode, PlaybackMode, PlaybackState, TimedMessage, TopicInfo,
+        BagMetadata, DeckConfig, LoopMode, PlaybackMode, PlaybackState, RawMessage, TimedMessage,
+        TopicInfo,
     },
     worker::{BagWorkerHandle, WorkerCommand, WorkerEvent},
     Error, Result,
@@ -30,6 +32,8 @@ pub struct Deck {
     /// Sub-index within messages at cursor_ns (for duplicate timestamps).
     cursor_sub: u32,
     metadata: BagMetadata,
+    /// Optional ROS 2 publisher manager for topic publishing.
+    publisher_manager: Option<PublisherManager>,
 }
 
 impl Deck {
@@ -80,6 +84,7 @@ impl Deck {
             cursor_ns,
             cursor_sub: 0,
             metadata: merged,
+            publisher_manager: None,
         };
 
         // Initial prefetch from all bags: send commands and wait for completion.
@@ -185,6 +190,7 @@ impl Deck {
 
         if let Some(mut msg) = self.cache.get_at(self.cursor_ns, self.cursor_sub) {
             self.maybe_patch_stamp(&mut msg);
+            self.maybe_publish(&msg);
             let timed = TimedMessage {
                 message: msg,
                 segment_id: self.timeline.segment_id(),
@@ -201,6 +207,7 @@ impl Deck {
             self.cursor_sub = next_sub;
             if let Some(mut msg) = self.cache.get_at(next_ts, next_sub) {
                 self.maybe_patch_stamp(&mut msg);
+                self.maybe_publish(&msg);
                 let timed = TimedMessage {
                     message: msg,
                     segment_id: self.timeline.segment_id(),
@@ -293,6 +300,11 @@ impl Deck {
     /// In best-effort mode, messages are returned immediately.
     /// Returns `None` when paused, stopped, or at end of bag.
     pub fn next_message(&mut self) -> Result<Option<TimedMessage>> {
+        // Spin the ROS 2 node for DDS discovery on each call.
+        if let Some(ref pm) = self.publisher_manager {
+            pm.spin_some();
+        }
+
         loop {
             match self.timeline.state() {
                 PlaybackState::Stopped | PlaybackState::Paused => return Ok(None),
@@ -330,6 +342,7 @@ impl Deck {
 
             let mut msg = msg;
             self.maybe_patch_stamp(&mut msg);
+            self.maybe_publish(&msg);
 
             let timed = TimedMessage {
                 message: msg,
@@ -349,6 +362,11 @@ impl Deck {
     /// pacing, paused, stopped, or at end of bag). Call this repeatedly from
     /// an event loop without blocking the thread.
     pub fn try_next_message(&mut self) -> Result<Option<TimedMessage>> {
+        // Spin the ROS 2 node for DDS discovery on each tick.
+        if let Some(ref pm) = self.publisher_manager {
+            pm.spin_some();
+        }
+
         loop {
             match self.timeline.state() {
                 PlaybackState::Stopped | PlaybackState::Paused => return Ok(None),
@@ -384,6 +402,7 @@ impl Deck {
 
             let mut msg = msg;
             self.maybe_patch_stamp(&mut msg);
+            self.maybe_publish(&msg);
 
             let timed = TimedMessage {
                 message: msg,
@@ -426,12 +445,56 @@ impl Deck {
         self.timeline.mode()
     }
 
+    // -- Publishing --
+
+    /// Attach a publisher manager (enables ROS 2 topic publishing).
+    pub fn enable_publishing(&mut self, manager: PublisherManager) {
+        self.publisher_manager = Some(manager);
+    }
+
+    /// Detach the publisher manager (disables publishing).
+    pub fn disable_publishing(&mut self) {
+        if let Some(ref mut pm) = self.publisher_manager {
+            pm.shutdown();
+        }
+        self.publisher_manager = None;
+    }
+
+    /// Whether publishing is currently active.
+    pub fn is_publishing(&self) -> bool {
+        self.publisher_manager
+            .as_ref()
+            .map(|pm| pm.is_enabled())
+            .unwrap_or(false)
+    }
+
+    /// Access the publisher manager, if any.
+    pub fn publisher_manager(&self) -> Option<&PublisherManager> {
+        self.publisher_manager.as_ref()
+    }
+
+    /// Mutable access to the publisher manager, if any.
+    pub fn publisher_manager_mut(&mut self) -> Option<&mut PublisherManager> {
+        self.publisher_manager.as_mut()
+    }
+
+    /// Publish a message to ROS 2 if publishing is enabled.
+    fn maybe_publish(&mut self, msg: &RawMessage) {
+        let type_name = match self.registry.topic_info(&msg.topic) {
+            Some(info) => info.type_name.clone(),
+            None => return,
+        };
+        if let Some(ref mut pm) = self.publisher_manager {
+            pm.ensure_and_publish(&msg.topic, &type_name, &msg.data);
+        }
+    }
+
     // -- Internal helpers --
 
     /// Find the next message at or after the cursor in the cache.
     /// Updates cursor to the found position. Returns `None` if cache is empty
     /// near the cursor.
-    fn find_next_cached_message(&mut self) -> Option<crate::types::RawMessage> {
+    fn find_next_cached_message(&mut self) -> Option<RawMessage> {
         self.ensure_cache_near_cursor();
 
         if let Some(msg) = self.cache.get_at(self.cursor_ns, self.cursor_sub) {
@@ -586,7 +649,7 @@ impl Deck {
     }
 
     /// Patch CDR Header.stamp and message timestamp if in Monotonic loop mode.
-    fn maybe_patch_stamp(&self, msg: &mut crate::types::RawMessage) {
+    fn maybe_patch_stamp(&self, msg: &mut RawMessage) {
         let iteration = self.timeline.loop_iteration();
         if self.timeline.loop_mode() != LoopMode::Monotonic || iteration == 0 {
             return;
@@ -638,7 +701,7 @@ fn merge_metadata(all: &[BagMetadata]) -> BagMetadata {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::RawMessage;
+    use RawMessage;
 
     /// Mock BagReader for Deck integration tests.
     struct MockBagReader {

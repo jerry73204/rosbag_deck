@@ -63,6 +63,47 @@ pub enum LoopMode {
     Monotonic,
 }
 
+/// QoS preset for ROS 2 publishing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum QosPreset {
+    /// sensor_msgs/* → BEST_EFFORT, all others → RELIABLE.
+    #[default]
+    Auto,
+    /// All topics use BEST_EFFORT reliability.
+    Sensor,
+    /// All topics use RELIABLE reliability.
+    Reliable,
+}
+
+impl QosPreset {
+    /// Whether a topic should use RELIABLE QoS under this preset.
+    pub fn is_reliable(&self, type_name: &str) -> bool {
+        match self {
+            QosPreset::Auto => !type_name.starts_with("sensor_msgs/msg/"),
+            QosPreset::Sensor => false,
+            QosPreset::Reliable => true,
+        }
+    }
+
+    /// Cycle to the next preset.
+    pub fn next(self) -> Self {
+        match self {
+            QosPreset::Auto => QosPreset::Sensor,
+            QosPreset::Sensor => QosPreset::Reliable,
+            QosPreset::Reliable => QosPreset::Auto,
+        }
+    }
+
+    /// Display name for this preset.
+    pub fn label(&self) -> &'static str {
+        match self {
+            QosPreset::Auto => "Auto",
+            QosPreset::Sensor => "Sensor",
+            QosPreset::Reliable => "Reliable",
+        }
+    }
+}
+
 /// Playback mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlaybackMode {

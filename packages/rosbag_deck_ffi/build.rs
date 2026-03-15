@@ -18,6 +18,15 @@ const REQUIRED_PACKAGES: &[&str] = &[
     "rcpputils",
     "builtin_interfaces",
     "rosbag2_storage_default_plugins",
+    "rcl_yaml_param_parser",
+    "libyaml_vendor",
+    "tracetools",
+    "libstatistics_collector",
+    "statistics_msgs",
+    "rcl_interfaces",
+    "rosgraph_msgs",
+    "rosidl_typesupport_c",
+    "rosidl_typesupport_cpp",
 ];
 
 fn main() {
@@ -64,10 +73,14 @@ fn main() {
         println!("cargo:rustc-link-search=native={}", dir.display());
     }
 
-    // Link rosbag2 libraries.
+    // Link rosbag2 and rclcpp libraries.
     println!("cargo:rustc-link-lib=dylib=rosbag2_cpp");
     println!("cargo:rustc-link-lib=dylib=rosbag2_storage");
     println!("cargo:rustc-link-lib=dylib=rcutils");
+    println!("cargo:rustc-link-lib=dylib=rclcpp");
+    println!("cargo:rustc-link-lib=dylib=rcl");
+    println!("cargo:rustc-link-lib=dylib=rmw_implementation");
+    println!("cargo:rustc-link-lib=dylib=tracetools");
     println!("cargo:rustc-link-lib=dylib=dl");
 
     // Optionally regenerate src/sys.rs from the C header via bindgen.

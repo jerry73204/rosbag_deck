@@ -8,6 +8,7 @@ use std::{
 };
 
 use rosbag_deck_core::{
+    publisher::{PublisherBackend, TopicPublisher},
     reader::BagReader,
     types::{BagMetadata, RawMessage, TopicInfo},
     writer::BagWriter,
@@ -229,6 +230,147 @@ impl BagWriter for Rosbag2Writer {
             self.handle = ptr::null_mut();
         }
         Ok(())
+    }
+}
+
+// --- ROS 2 Node / Publisher API ---
+
+/// A ROS 2 node that can create generic publishers.
+pub struct RosNode {
+    handle: *mut sys::Rosbag2Node,
+}
+
+// The C++ node is accessed only via our safe wrappers.
+unsafe impl Send for RosNode {}
+
+impl RosNode {
+    /// Create a new ROS 2 node. Initializes rclcpp if needed.
+    pub fn new(name: &str) -> Result<Self> {
+        let c_name =
+            CString::new(name).map_err(|e| Error::Ffi(format!("node name null byte: {e}")))?;
+        let handle = unsafe { sys::rosbag2_node_create(c_name.as_ptr()) };
+        if handle.is_null() {
+            return Err(Error::Ffi(last_error()));
+        }
+        Ok(Self { handle })
+    }
+
+    /// Create a generic publisher for serialized CDR data.
+    pub fn create_publisher(
+        &self,
+        topic: &str,
+        type_name: &str,
+        qos_depth: usize,
+        reliable: bool,
+    ) -> Result<RosPublisher> {
+        let c_topic =
+            CString::new(topic).map_err(|e| Error::Ffi(format!("topic null byte: {e}")))?;
+        let c_type =
+            CString::new(type_name).map_err(|e| Error::Ffi(format!("type name null byte: {e}")))?;
+        let handle = unsafe {
+            sys::rosbag2_node_create_publisher(
+                self.handle,
+                c_topic.as_ptr(),
+                c_type.as_ptr(),
+                qos_depth,
+                reliable,
+            )
+        };
+        if handle.is_null() {
+            return Err(Error::Ffi(last_error()));
+        }
+        Ok(RosPublisher { handle })
+    }
+
+    /// Non-blocking spin for DDS discovery and graph updates.
+    pub fn spin_some(&self) {
+        unsafe { sys::rosbag2_node_spin_some(self.handle) };
+    }
+}
+
+impl Drop for RosNode {
+    fn drop(&mut self) {
+        if !self.handle.is_null() {
+            unsafe { sys::rosbag2_node_destroy(self.handle) };
+            self.handle = ptr::null_mut();
+        }
+    }
+}
+
+/// A generic publisher that publishes serialized CDR data.
+pub struct RosPublisher {
+    handle: *mut sys::Rosbag2Publisher,
+}
+
+// Publisher handles are accessed only via safe wrappers.
+unsafe impl Send for RosPublisher {}
+
+impl RosPublisher {
+    /// Publish serialized CDR data.
+    pub fn publish(&self, data: &[u8]) -> Result<()> {
+        let rc = unsafe { sys::rosbag2_node_publish(self.handle, data.as_ptr(), data.len()) };
+        if rc != 0 {
+            return Err(Error::Ffi(last_error()));
+        }
+        Ok(())
+    }
+}
+
+impl Drop for RosPublisher {
+    fn drop(&mut self) {
+        if !self.handle.is_null() {
+            unsafe { sys::rosbag2_node_destroy_publisher(self.handle) };
+            self.handle = ptr::null_mut();
+        }
+    }
+}
+
+// --- PublisherBackend implementation ---
+
+/// FFI-backed publisher backend using rclcpp.
+pub struct RosPublisherBackend {
+    node: RosNode,
+}
+
+impl RosPublisherBackend {
+    /// Create a new backend with a ROS 2 node.
+    pub fn new(node_name: &str) -> Result<Self> {
+        let node = RosNode::new(node_name)?;
+        Ok(Self { node })
+    }
+}
+
+/// Wraps `RosPublisher` to implement `TopicPublisher`.
+struct FfiTopicPublisher {
+    inner: RosPublisher,
+}
+
+impl TopicPublisher for FfiTopicPublisher {
+    fn publish(&self, data: &[u8]) -> Result<()> {
+        self.inner.publish(data)
+    }
+}
+
+impl PublisherBackend for RosPublisherBackend {
+    fn create_publisher(
+        &mut self,
+        topic: &str,
+        type_name: &str,
+        qos_depth: usize,
+        reliable: bool,
+    ) -> Result<Box<dyn TopicPublisher>> {
+        let pub_handle = self
+            .node
+            .create_publisher(topic, type_name, qos_depth, reliable)?;
+        Ok(Box::new(FfiTopicPublisher { inner: pub_handle }))
+    }
+
+    fn spin_some(&self) {
+        self.node.spin_some();
+    }
+
+    fn shutdown(&mut self) {
+        // Node cleanup happens in Drop.
     }
 }
 

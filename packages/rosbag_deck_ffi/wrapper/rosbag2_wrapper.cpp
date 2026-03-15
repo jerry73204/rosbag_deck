@@ -5,6 +5,10 @@
 #include <rosbag2_storage/storage_filter.hpp>
 #include <rosbag2_storage/storage_options.hpp>
 
+#include <rclcpp/rclcpp.hpp>
+#include <rclcpp/generic_publisher.hpp>
+#include <rclcpp/serialized_message.hpp>
+
 #include <rosidl_typesupport_introspection_c/field_types.h>
 #include <rosidl_typesupport_introspection_c/message_introspection.h>
 
@@ -439,6 +443,126 @@ int rosbag2_type_has_header_first(const char *type_name) {
         return -1;
     } catch (...) {
         set_error("type_has_header_first failed: unknown exception");
+        return -1;
+    }
+}
+
+/* ----- ROS 2 Node / Publisher API ----- */
+
+/* rclcpp init guard — ensures rclcpp::init is called exactly once. */
+static std::once_flag g_rclcpp_init_flag;
+
+static void ensure_rclcpp_init() {
+    std::call_once(g_rclcpp_init_flag, []() {
+        int argc = 0;
+        rclcpp::init(argc, nullptr);
+    });
+}
+
+struct Rosbag2Node {
+    std::shared_ptr<rclcpp::Node> node;
+    rclcpp::executors::SingleThreadedExecutor executor;
+};
+
+struct Rosbag2Publisher {
+    rclcpp::GenericPublisher::SharedPtr publisher;
+};
+
+Rosbag2Node *rosbag2_node_create(const char *node_name) {
+    if (!node_name) {
+        set_error("null node_name");
+        return nullptr;
+    }
+    try {
+        ensure_rclcpp_init();
+        auto *n = new (std::nothrow) Rosbag2Node();
+        if (!n) {
+            set_error("allocation failed");
+            return nullptr;
+        }
+        n->node = std::make_shared<rclcpp::Node>(node_name);
+        n->executor.add_node(n->node);
+        return n;
+    } catch (const std::exception &e) {
+        set_error(std::string("failed to create node: ") + e.what());
+        return nullptr;
+    }
+}
+
+void rosbag2_node_destroy(Rosbag2Node *node) {
+    if (node) {
+        try {
+            node->executor.cancel();
+        } catch (...) {}
+        delete node;
+    }
+}
+
+void rosbag2_node_spin_some(Rosbag2Node *node) {
+    if (!node) return;
+    try {
+        node->executor.spin_some(std::chrono::milliseconds(0));
+    } catch (...) {}
+}
+
+Rosbag2Publisher *rosbag2_node_create_publisher(
+    Rosbag2Node *node,
+    const char *topic,
+    const char *type_name,
+    size_t qos_depth,
+    bool reliable)
+{
+    if (!node || !topic || !type_name) {
+        set_error("null argument");
+        return nullptr;
+    }
+    try {
+        auto qos = rclcpp::QoS(rclcpp::KeepLast(qos_depth));
+        qos.durability(rclcpp::DurabilityPolicy::Volatile);
+        if (reliable) {
+            qos.reliability(rclcpp::ReliabilityPolicy::Reliable);
+        } else {
+            qos.reliability(rclcpp::ReliabilityPolicy::BestEffort);
+        }
+
+        auto *pub_handle = new (std::nothrow) Rosbag2Publisher();
+        if (!pub_handle) {
+            set_error("allocation failed");
+            return nullptr;
+        }
+        pub_handle->publisher = node->node->create_generic_publisher(
+            topic, type_name, qos);
+        return pub_handle;
+    } catch (const std::exception &e) {
+        set_error(std::string("failed to create publisher: ") + e.what());
+        return nullptr;
+    }
+}
+
+void rosbag2_node_destroy_publisher(Rosbag2Publisher *pub_handle) {
+    delete pub_handle;
+}
+
+int rosbag2_node_publish(
+    Rosbag2Publisher *pub_handle,
+    const uint8_t *data,
+    size_t data_len)
+{
+    if (!pub_handle || (!data && data_len > 0)) {
+        set_error("null argument");
+        return -1;
+    }
+    try {
+        auto msg = rclcpp::SerializedMessage(data_len);
+        auto &rcl_msg = msg.get_rcl_serialized_message();
+        if (data_len > 0) {
+            memcpy(rcl_msg.buffer, data, data_len);
+        }
+        rcl_msg.buffer_length = data_len;
+        pub_handle->publisher->publish(msg);
+        return 0;
+    } catch (const std::exception &e) {
+        set_error(std::string("publish failed: ") + e.what());
         return -1;
     }
 }

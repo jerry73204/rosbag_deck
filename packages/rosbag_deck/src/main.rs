@@ -54,6 +54,18 @@ enum Command {
         /// Use `--loop` alone for "restart" (backward compatible).
         #[arg(long, short, default_value = "off", default_missing_value = "restart", num_args = 0..=1)]
         r#loop: String,
+        /// Disable ROS 2 topic publishing (publishing is on by default).
+        #[arg(long)]
+        no_publish: bool,
+        /// ROS 2 node name for publishing.
+        #[arg(long, default_value = "rosbag_deck")]
+        node_name: String,
+        /// Publisher queue depth (QoS KEEP_LAST).
+        #[arg(long, default_value_t = 10)]
+        qos_depth: usize,
+        /// QoS preset: auto, sensor, or reliable.
+        #[arg(long, default_value = "auto")]
+        qos_profile: String,
     },
     /// Edit bag files: slice, merge, filter, and transform timestamps.
     Edit {
@@ -151,6 +163,10 @@ fn main() -> anyhow::Result<()> {
             exclude,
             no_tui,
             r#loop,
+            no_publish,
+            node_name,
+            qos_depth,
+            qos_profile,
         } => {
             let loop_mode = match r#loop.as_str() {
                 "off" => rosbag_deck_core::LoopMode::Off,
@@ -158,6 +174,15 @@ fn main() -> anyhow::Result<()> {
                 "monotonic" => rosbag_deck_core::LoopMode::Monotonic,
                 other => anyhow::bail!(
                     "invalid --loop value '{}': expected off, restart, or monotonic",
+                    other
+                ),
+            };
+            let qos_preset = match qos_profile.as_str() {
+                "auto" => rosbag_deck_core::QosPreset::Auto,
+                "sensor" => rosbag_deck_core::QosPreset::Sensor,
+                "reliable" => rosbag_deck_core::QosPreset::Reliable,
+                other => anyhow::bail!(
+                    "invalid --qos-profile '{}': expected auto, sensor, or reliable",
                     other
                 ),
             };
@@ -169,6 +194,10 @@ fn main() -> anyhow::Result<()> {
                 regex,
                 exclude,
                 loop_mode,
+                publish: !no_publish,
+                node_name,
+                qos_depth,
+                qos_preset,
             };
 
             if no_tui {

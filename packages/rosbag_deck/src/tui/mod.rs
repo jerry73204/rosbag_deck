@@ -257,7 +257,7 @@ impl App {
 
         // Normal mode.
         match key.code {
-            KeyCode::Char('q') | KeyCode::Char('Q') => self.should_quit = true,
+            KeyCode::Char('q') => self.should_quit = true,
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.should_quit = true;
             }
@@ -294,6 +294,36 @@ impl App {
                     LoopMode::Monotonic => LoopMode::Off,
                 };
                 self.deck.set_loop_mode(next);
+            }
+            KeyCode::Char('p') | KeyCode::Char('P') => {
+                if let Some(pm) = self.deck.publisher_manager_mut() {
+                    let new_state = !pm.is_enabled();
+                    pm.set_enabled(new_state);
+                    if new_state {
+                        self.status_message = Some(format!(
+                            "Publishing enabled ({} topics)",
+                            pm.publisher_count()
+                        ));
+                    } else {
+                        self.status_message = Some("Publishing disabled".into());
+                    }
+                } else {
+                    self.status_message =
+                        Some("No ROS 2 node (use --no-publish to suppress)".into());
+                }
+            }
+            KeyCode::Char('Q') => {
+                // Cycle QoS preset.
+                if let Some(pm) = self.deck.publisher_manager_mut() {
+                    let next = pm.qos_preset().next();
+                    pm.set_qos_preset(next);
+                    self.status_message = Some(format!(
+                        "QoS preset: {} (publishers will be recreated)",
+                        next.label()
+                    ));
+                } else {
+                    self.status_message = Some("No ROS 2 node".into());
+                }
             }
             KeyCode::Char('t') | KeyCode::Char('T') => {
                 self.topic_panel = Some(TopicPanel::new(&self.deck));
