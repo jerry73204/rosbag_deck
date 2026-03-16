@@ -1,63 +1,67 @@
 # RosBag Deck
 
-Interactive ROS 2 bag player with tape deck-style controls and streaming architecture for large bag files.
+A fast, interactive ROS 2 bag player written in Rust. Play, inspect, and edit rosbag2 files with tape deck-style controls, a terminal UI, and Python bindings.
 
-## Overview
+## Features
 
-RosBag Deck provides an interactive interface for playing, pausing, and navigating through ROS bag files with frame-level precision. It features a memory-efficient streaming architecture that can handle arbitrarily large bag files without loading everything into memory.
+- **Headless or interactive TUI** playback with real-time pacing
+- **ROS 2 topic publishing** with automatic QoS matching
+- **Loop modes**: restart (original timestamps) or monotonic (ever-increasing timestamps)
+- **Topic filtering** by name, regex, or exclusion pattern
+- **Bag editing**: slice, merge, filter, and transform timestamps
+- **Python bindings** via PyO3 for scripted access
+- **Streaming architecture** that handles arbitrarily large bags without loading them into memory
 
-## Package Structure
+## Requirements
 
-The RosBag Deck system consists of five packages:
+- ROS 2 Humble or later (sourced)
+- Rust stable toolchain
+- [just](https://github.com/casey/just) command runner
 
-- **[rosbag_deck_interface](./rosbag_deck_interface/)** - ROS 2 message and service definitions
-- **[rosbag_deck_core](./rosbag_deck_core/)** - Core C++ library with bag reading and caching functionality
-- **[rosbag_deck_node](./rosbag_deck_node/)** - ROS 2 node implementation
-- **[rosbag_deck_python](./rosbag_deck_python/)** - Python bindings for the core library
-- **[rosbag_deck_tui](./rosbag_deck_tui/)** - Terminal User Interface for interactive control
+## Building
+
+```bash
+just setup    # Install colcon-cargo-ros2 (first time only)
+just build    # Build all packages
+```
 
 ## Quick Start
 
-### Building
-
 ```bash
-cd /path/to/rosbag_deck
-colcon build
-source install/setup.bash
+# Inspect a bag
+rosbag_deck info /path/to/bag
+
+# Play a bag (publishes to ROS 2 topics)
+rosbag_deck play /path/to/bag
+
+# Interactive TUI with topic filtering
+rosbag_deck play /path/to/bag --tui --topics /camera/image /imu
+
+# Loop with monotonically increasing timestamps
+rosbag_deck play /path/to/bag --loop monotonic
+
+# Extract 60 seconds of camera data into a new bag
+rosbag_deck edit /path/to/bag -o output.db --topics /camera/image --start 0 --end 60
 ```
 
-### Running the Node
+## Packages
 
-```bash
-ros2 run rosbag_deck_node rosbag_deck_node \
-  --ros-args \
-  -p bag_paths:="['/path/to/bag1.db3', '/path/to/bag2.db3']"
+| Package                                              | Description                                                 |
+|------------------------------------------------------|-------------------------------------------------------------|
+| [`rosbag_deck`](packages/rosbag_deck/)               | CLI and TUI — play, info, edit subcommands                  |
+| [`rosbag_deck_python`](packages/rosbag_deck_python/) | Python bindings via PyO3                                    |
+| [`rosbag_deck_core`](packages/rosbag_deck_core/)     | Core Rust library: timeline, caching, streaming, publishing |
+| [`rosbag_deck_ffi`](packages/rosbag_deck_ffi/)       | C/C++ FFI to rosbag2_cpp, rclcpp, rcutils                   |
+
+## Architecture
+
+```
+rosbag_deck_ffi          (C/C++ FFI to rosbag2_cpp, rclcpp, rcutils)
+    |
+rosbag_deck_core         (Rust core: timeline, caching, streaming, publishing)
+    |            \
+rosbag_deck     rosbag_deck_python
+(CLI + TUI)     (PyO3 bindings)
 ```
 
-### Using the TUI
-
-```bash
-ros2 run rosbag_deck_tui rosbag_deck_tui
-```
-
-## Key Features
-
-- **Interactive Controls**: Play, pause, step forward/backward, seek to time
-- **Memory Efficient**: Streaming architecture with LRU cache
-- **Multi-bag Support**: Load and synchronize multiple bag files
-- **Python Bindings**: Access core functionality from Python
-- **Terminal UI**: Interactive control interface
-
-## Documentation
-
-For detailed information about each package:
-
-- [Core Library Documentation](./rosbag_deck_core/README.md)
-- [Interface Definitions](./rosbag_deck_interface/README.md)
-- [ROS 2 Node Documentation](./rosbag_deck_node/README.md)
-- [Python Bindings Documentation](./rosbag_deck_python/README.md)
-- [Terminal UI Documentation](./rosbag_deck_tui/README.md)
-
-## License
-
-This project is part of the LCTK (LiDAR and Camera Toolkit) and follows the same license terms.
+All packages are built as ROS 2 `ament_cargo` packages via colcon.
