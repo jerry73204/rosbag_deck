@@ -12,6 +12,8 @@
 #include <rosidl_typesupport_introspection_c/field_types.h>
 #include <rosidl_typesupport_introspection_c/message_introspection.h>
 
+#include <rcutils/logging.h>
+
 #include <cstdlib>
 #include <cstring>
 #include <dlfcn.h>
@@ -565,6 +567,41 @@ int rosbag2_node_publish(
         set_error(std::string("publish failed: ") + e.what());
         return -1;
     }
+}
+
+void rosbag2_set_log_severity(int severity) {
+    rcutils_logging_set_default_logger_level(severity);
+}
+
+/* Global callback for forwarding rcutils logs to Rust. */
+static Rosbag2LogCallback g_log_callback = nullptr;
+
+static void custom_log_handler(
+    const rcutils_log_location_t * /*location*/,
+    int severity,
+    const char *name,
+    rcutils_time_point_value_t /*timestamp*/,
+    const char *format,
+    va_list *args)
+{
+    if (!g_log_callback) return;
+
+    // Format the message using vsnprintf.
+    char buf[1024];
+    vsnprintf(buf, sizeof(buf), format, *args);
+
+    g_log_callback(severity, name ? name : "", buf);
+}
+
+void rosbag2_set_log_handler(Rosbag2LogCallback callback, int severity) {
+    if (callback) {
+        g_log_callback = callback;
+        rcutils_logging_set_output_handler(custom_log_handler);
+    } else {
+        g_log_callback = nullptr;
+        rcutils_logging_set_output_handler(rcutils_logging_console_output_handler);
+    }
+    rcutils_logging_set_default_logger_level(severity);
 }
 
 const char *rosbag2_last_error(void) {

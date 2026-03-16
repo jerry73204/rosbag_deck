@@ -389,6 +389,58 @@ pub fn type_has_header_first(type_name: &str) -> Result<bool> {
     }
 }
 
+/// rcutils severity levels (matching RCUTILS_LOG_SEVERITY).
+pub const RCUTILS_LOG_SEVERITY_DEBUG: i32 = 10;
+pub const RCUTILS_LOG_SEVERITY_INFO: i32 = 20;
+pub const RCUTILS_LOG_SEVERITY_WARN: i32 = 30;
+pub const RCUTILS_LOG_SEVERITY_ERROR: i32 = 40;
+
+/// Set the rcutils (ROS 2 C logging) default severity threshold.
+/// Use this to suppress noisy C++ library log output (e.g., rosbag2_storage INFO).
+pub fn set_ros_log_severity(severity: i32) {
+    unsafe {
+        sys::rosbag2_set_log_severity(severity);
+    }
+}
+
+/// The extern "C" callback that receives rcutils log messages and re-emits
+/// them as Rust `tracing` events.
+unsafe extern "C" fn ros_log_to_tracing(
+    severity: std::ffi::c_int,
+    name: *const std::ffi::c_char,
+    message: *const std::ffi::c_char,
+) {
+    let name = if name.is_null() {
+        "ros2"
+    } else {
+        unsafe { CStr::from_ptr(name) }.to_str().unwrap_or("ros2")
+    };
+    let msg = if message.is_null() {
+        ""
+    } else {
+        unsafe { CStr::from_ptr(message) }.to_str().unwrap_or("")
+    };
+
+    match severity {
+        s if s >= 50 => tracing::error!(target = name, "[ROS] {}", msg),
+        s if s >= 40 => tracing::error!(target = name, "[ROS] {}", msg),
+        s if s >= 30 => tracing::warn!(target = name, "[ROS] {}", msg),
+        s if s >= 20 => tracing::info!(target = name, "[ROS] {}", msg),
+        _ => tracing::debug!(target = name, "[ROS] {}", msg),
+    }
+}
+
+/// Install a custom rcutils output handler that forwards ROS 2 C/C++ log
+/// messages into Rust's `tracing` system. This allows the TUI (or any
+/// tracing subscriber) to capture them.
+///
+/// Call with the desired severity threshold (e.g., `RCUTILS_LOG_SEVERITY_WARN`).
+pub fn install_ros_log_handler(severity: i32) {
+    unsafe {
+        sys::rosbag2_set_log_handler(Some(ros_log_to_tracing), severity);
+    }
+}
+
 /// Read metadata from an open reader handle.
 fn read_metadata(handle: *mut sys::Rosbag2Reader) -> Result<BagMetadata> {
     let mut raw = sys::Rosbag2Metadata {

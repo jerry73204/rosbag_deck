@@ -199,6 +199,19 @@ unsafe extern "C" {
     ) -> ::core::ffi::c_int;
 }
 
+pub type Rosbag2LogCallback = Option<
+    unsafe extern "C" fn(
+        severity: ::core::ffi::c_int,
+        name: *const ::core::ffi::c_char,
+        message: *const ::core::ffi::c_char,
+    ),
+>;
+unsafe extern "C" {
+    pub fn rosbag2_set_log_severity(severity: ::core::ffi::c_int);
+}
+unsafe extern "C" {
+    pub fn rosbag2_set_log_handler(callback: Rosbag2LogCallback, severity: ::core::ffi::c_int);
+}
 unsafe extern "C" {
     pub fn rosbag2_last_error() -> *const ::core::ffi::c_char;
 }

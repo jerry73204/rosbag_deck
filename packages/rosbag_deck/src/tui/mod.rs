@@ -422,6 +422,10 @@ pub fn run(opts: &PlayOpts) -> Result<()> {
     // instead of writing to stderr (which would corrupt the TUI).
     let log_rx = log_subscriber::init();
 
+    // Bridge ROS 2 C/C++ logs (rcutils) into the tracing subscriber so they
+    // appear in the TUI log panel instead of corrupting the alternate screen.
+    rosbag_deck_ffi::install_ros_log_handler(rosbag_deck_ffi::RCUTILS_LOG_SEVERITY_WARN);
+
     // Open deck before entering alternate screen so startup messages are visible.
     let mut app = App::new(opts, log_rx)?;
 

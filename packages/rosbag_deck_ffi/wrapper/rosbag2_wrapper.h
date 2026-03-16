@@ -185,6 +185,29 @@ int rosbag2_node_publish(
     const uint8_t *data,
     size_t data_len);
 
+/*
+ * Set the rcutils (ROS 2 C logging) severity threshold.
+ * Severity levels: 0=UNSET, 10=DEBUG, 20=INFO, 30=WARN, 40=ERROR, 50=FATAL.
+ * Call with 30 to suppress INFO messages from C++ libraries like rosbag2_storage.
+ */
+void rosbag2_set_log_severity(int severity);
+
+/*
+ * Callback type for receiving rcutils log messages.
+ *
+ * @param severity  rcutils severity (10=DEBUG, 20=INFO, 30=WARN, 40=ERROR, 50=FATAL).
+ * @param name      Logger name (e.g., "rosbag2_storage").
+ * @param message   Formatted log message.
+ */
+typedef void (*Rosbag2LogCallback)(int severity, const char *name, const char *message);
+
+/*
+ * Install a custom rcutils log output handler that forwards messages to a
+ * Rust callback. Also sets the severity threshold.
+ * Pass NULL to restore the default rcutils handler.
+ */
+void rosbag2_set_log_handler(Rosbag2LogCallback callback, int severity);
+
 /* Returns the last error message, or NULL if no error. Thread-local. */
 const char *rosbag2_last_error(void);
 
