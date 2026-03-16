@@ -130,6 +130,19 @@ impl VirtualTimeline {
         self.speed = speed;
     }
 
+    /// Re-anchor the wall clock to the current bag time position.
+    ///
+    /// Call this after any unexpected blocking operation (cache miss, FFI call)
+    /// that consumed wall clock time without advancing bag time. Without this,
+    /// subsequent `delay_until()` calls see the blocking duration as elapsed
+    /// playback time, causing a burst of messages with no pacing.
+    pub fn resync(&mut self) {
+        if self.state == PlaybackState::Playing {
+            self.bag_anchor_ns = self.current_bag_time_ns();
+            self.wall_anchor = Instant::now();
+        }
+    }
+
     /// Set playback mode.
     pub fn set_mode(&mut self, mode: PlaybackMode) {
         self.mode = mode;

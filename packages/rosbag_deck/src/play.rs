@@ -6,7 +6,7 @@ use std::{
 };
 
 use regex::Regex;
-use rosbag_deck_core::{BagReader, Deck, DeckConfig, LoopMode, PlaybackMode, QosPreset};
+use rosbag_deck_core::{BagReader, Deck, DeckConfig, LoopMode, QosPreset};
 use rosbag_deck_ffi::Rosbag2Reader;
 
 pub struct PlayOpts {
@@ -141,7 +141,6 @@ pub fn run_headless(opts: &PlayOpts) -> anyhow::Result<()> {
     let meta = deck.metadata().clone();
     let duration_ns = meta.end_time_ns - meta.start_time_ns;
 
-    deck.set_mode(PlaybackMode::BestEffort);
     deck.play();
 
     let mut msg_count: u64 = 0;

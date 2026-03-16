@@ -1,4 +1,8 @@
-use std::{collections::HashSet, sync::Arc, time::Duration};
+use std::{
+    collections::HashSet,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use crate::{
     cache::{CacheConfig, MessageCache},
@@ -302,7 +306,13 @@ impl Deck {
     pub fn next_message(&mut self) -> Result<Option<TimedMessage>> {
         // Spin the ROS 2 node for DDS discovery on each call.
         if let Some(ref pm) = self.publisher_manager {
+            let t = Instant::now();
             pm.spin_some();
+            let elapsed = t.elapsed();
+            if elapsed.as_millis() > 5 {
+                tracing::debug!(elapsed_ms = elapsed.as_millis(), "spin_some blocked");
+                self.timeline.resync();
+            }
         }
 
         loop {
@@ -311,7 +321,16 @@ impl Deck {
                 PlaybackState::Playing => {}
             }
 
+            let t = Instant::now();
             let msg = self.find_next_cached_message();
+            let cache_elapsed = t.elapsed();
+            if cache_elapsed.as_millis() > 5 {
+                tracing::debug!(
+                    elapsed_ms = cache_elapsed.as_millis(),
+                    "cache lookup blocked"
+                );
+                self.timeline.resync();
+            }
 
             let msg = match msg {
                 Some(msg) => msg,
@@ -323,6 +342,7 @@ impl Deck {
                         self.cursor_sub = 0;
                         self.cache.clear();
                         self.seek_workers(wrapped_ts);
+                        self.timeline.resync();
                         continue;
                     }
                     return Ok(None);
@@ -337,6 +357,7 @@ impl Deck {
 
             // Real-time pacing — block until it's time.
             if let Some(delay) = self.timeline.delay_until(msg.timestamp_ns) {
+                tracing::trace!(delay_ms = delay.as_millis(), topic = %msg.topic, "pacing sleep");
                 std::thread::sleep(delay);
             }
 
@@ -364,7 +385,13 @@ impl Deck {
     pub fn try_next_message(&mut self) -> Result<Option<TimedMessage>> {
         // Spin the ROS 2 node for DDS discovery on each tick.
         if let Some(ref pm) = self.publisher_manager {
+            let t = Instant::now();
             pm.spin_some();
+            let elapsed = t.elapsed();
+            if elapsed.as_millis() > 5 {
+                tracing::debug!(elapsed_ms = elapsed.as_millis(), "spin_some blocked (try)");
+                self.timeline.resync();
+            }
         }
 
         loop {
@@ -373,7 +400,16 @@ impl Deck {
                 PlaybackState::Playing => {}
             }
 
+            let t = Instant::now();
             let msg = self.find_next_cached_message();
+            let cache_elapsed = t.elapsed();
+            if cache_elapsed.as_millis() > 5 {
+                tracing::debug!(
+                    elapsed_ms = cache_elapsed.as_millis(),
+                    "cache lookup blocked (try)"
+                );
+                self.timeline.resync();
+            }
 
             let msg = match msg {
                 Some(msg) => msg,
@@ -383,6 +419,7 @@ impl Deck {
                         self.cursor_sub = 0;
                         self.cache.clear();
                         self.seek_workers(wrapped_ts);
+                        self.timeline.resync();
                         continue;
                     }
                     return Ok(None);
