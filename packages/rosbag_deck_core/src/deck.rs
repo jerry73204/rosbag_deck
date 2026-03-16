@@ -452,6 +452,29 @@ impl Deck {
         self.publisher_manager = Some(manager);
     }
 
+    /// Pre-create publishers for all known topics (respecting the topic filter)
+    /// to avoid lazy-init delays during the first playback loop.
+    pub fn precreate_publishers(&mut self) {
+        let topics: Vec<(String, String)> = self
+            .registry
+            .topic_names()
+            .filter(|t| self.registry.is_accepted(t))
+            .filter_map(|t| {
+                self.registry
+                    .topic_info(t)
+                    .map(|info| (t.to_string(), info.type_name.clone()))
+            })
+            .collect();
+
+        if let Some(ref mut pm) = self.publisher_manager {
+            let refs: Vec<(&str, &str)> = topics
+                .iter()
+                .map(|(t, ty)| (t.as_str(), ty.as_str()))
+                .collect();
+            pm.precreate_publishers(&refs);
+        }
+    }
+
     /// Detach the publisher manager (disables publishing).
     pub fn disable_publishing(&mut self) {
         if let Some(ref mut pm) = self.publisher_manager {

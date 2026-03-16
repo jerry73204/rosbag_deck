@@ -83,6 +83,30 @@ impl PublisherManager {
         }
     }
 
+    /// Pre-create publishers for all known topics to avoid lazy-init
+    /// delays during the first playback loop.
+    pub fn precreate_publishers(&mut self, topics: &[(&str, &str)]) {
+        for &(topic, type_name) in topics {
+            if self.publishers.contains_key(topic) || self.failed_topics.contains(topic) {
+                continue;
+            }
+            let reliable = self.qos_preset.is_reliable(type_name);
+            match self
+                .backend
+                .create_publisher(topic, type_name, self.qos_depth, reliable)
+            {
+                Ok(pub_handle) => {
+                    self.publishers.insert(topic.to_string(), pub_handle);
+                    tracing::info!(topic, "publisher created");
+                }
+                Err(e) => {
+                    tracing::warn!(%topic, %e, "failed to create publisher");
+                    self.failed_topics.insert(topic.to_string());
+                }
+            }
+        }
+    }
+
     /// Ensure a publisher exists for the topic and publish data.
     pub fn ensure_and_publish(&mut self, topic: &str, type_name: &str, data: &[u8]) {
         if !self.enabled {

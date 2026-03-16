@@ -83,6 +83,12 @@ pub fn open_deck(opts: &PlayOpts) -> anyhow::Result<Deck> {
         deck.set_topic_filter(Some(filter));
     }
 
+    // Pre-create publishers for all (filtered) topics to avoid lazy-init
+    // delays that cause stuttering on the first playback loop.
+    if opts.publish {
+        deck.precreate_publishers();
+    }
+
     Ok(deck)
 }
 
@@ -128,6 +134,9 @@ fn resolve_topic_filter(
 
 /// Headless playback — shows progress like `ros2 bag play`.
 pub fn run_headless(opts: &PlayOpts) -> anyhow::Result<()> {
+    // In headless mode, suppress noisy C++ INFO logs but keep WARN+ on stderr.
+    rosbag_deck_ffi::set_ros_log_severity(rosbag_deck_ffi::RCUTILS_LOG_SEVERITY_WARN);
+
     let mut deck = open_deck(opts)?;
     let meta = deck.metadata().clone();
     let duration_ns = meta.end_time_ns - meta.start_time_ns;
