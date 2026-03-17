@@ -1,0 +1,4 @@
+source;share/rosbag_deck/local_setup.bash
+source;share/rosbag_deck/local_setup.dsv
+source;share/rosbag_deck/local_setup.sh
+source;share/rosbag_deck/local_setup.zsh

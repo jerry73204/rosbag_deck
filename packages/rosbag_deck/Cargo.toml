@@ -33,6 +33,23 @@ section = "science"
 priority = "optional"
 depends = "$auto, ros-humble-rosbag2-cpp, ros-humble-rcutils, ros-humble-rclcpp, ros-humble-rcl, ros-humble-rmw-implementation, ros-humble-tracetools, ros-humble-rosbag2-storage-default-plugins"
 assets = [
-    ["target/release/rosbag_deck", "usr/bin/rosbag_deck", "755"],
+    # Binary
+    ["target/release/rosbag_deck", "opt/ros/humble/bin/rosbag_deck", "755"],
+    # package.xml
+    ["package.xml", "opt/ros/humble/share/rosbag_deck/package.xml", "644"],
+    # Ament index marker (registers package with ament)
+    ["deb/ament/marker", "opt/ros/humble/share/ament_index/resource_index/packages/rosbag_deck", "644"],
+    # Ament environment hooks
+    ["deb/ament/environment/ament_prefix_path.sh", "opt/ros/humble/share/rosbag_deck/environment/ament_prefix_path.sh", "644"],
+    ["deb/ament/environment/ament_prefix_path.dsv", "opt/ros/humble/share/rosbag_deck/environment/ament_prefix_path.dsv", "644"],
+    ["deb/ament/environment/path.sh", "opt/ros/humble/share/rosbag_deck/environment/path.sh", "644"],
+    ["deb/ament/environment/path.dsv", "opt/ros/humble/share/rosbag_deck/environment/path.dsv", "644"],
+    # Ament local_setup scripts
+    ["deb/ament/package.dsv", "opt/ros/humble/share/rosbag_deck/package.dsv", "644"],
+    ["deb/ament/local_setup.bash", "opt/ros/humble/share/rosbag_deck/local_setup.bash", "644"],
+    ["deb/ament/local_setup.sh", "opt/ros/humble/share/rosbag_deck/local_setup.sh", "644"],
+    ["deb/ament/local_setup.zsh", "opt/ros/humble/share/rosbag_deck/local_setup.zsh", "644"],
+    ["deb/ament/local_setup.dsv", "opt/ros/humble/share/rosbag_deck/local_setup.dsv", "644"],
+    # Docs
     ["../../README.md", "usr/share/doc/ros-humble-rosbag-deck/README.md", "644"],
 ]
