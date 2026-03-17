@@ -82,6 +82,14 @@ rosbag_deck_tests (integration tests)
 - ROS 2 Humble or later
 - `.envrc` sources `/opt/ros/humble/setup.bash` and `install/setup.bash` automatically
 
+### Releasing / .deb Packaging
+
+- `.github/workflows/release-deb.yml` builds a `ros-humble-rosbag-deck` .deb on `vX.Y.Z` tag push
+- Uses `cargo-deb` with metadata in `packages/rosbag_deck/Cargo.toml` (`[package.metadata.deb]`)
+- Ament integration files (index marker, environment hooks, local_setup scripts) are in `packages/rosbag_deck/deb/ament/` and are included as cargo-deb assets
+- The .deb installs the binary to `/opt/ros/humble/bin/` with full ament package structure so `source /opt/ros/humble/setup.bash` adds it to PATH
+- Bloom/ROS buildfarm is **not supported** for Rust packages — see [ros2-rust#310](https://github.com/ros2-rust/ros2_rust/issues/310)
+
 ### Python Package Management
 
 - Uses UV (not pip/rye) for workspace management
