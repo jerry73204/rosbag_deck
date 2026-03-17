@@ -1,0 +1,64 @@
+name: Release .deb
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+*"
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  ROS_DISTRO: humble
+
+permissions:
+  contents: write
+
+jobs:
+  build-deb:
+    name: Build ros-humble-rosbag-deck
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install ROS 2 Humble
+        uses: ros-tooling/setup-ros@v0.7
+        with:
+          required-ros-distributions: humble
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-deb
+        run: cargo install cargo-deb --locked
+
+      - name: Build release binary
+        run: |
+          source /opt/ros/humble/setup.bash
+          cargo build --release -p rosbag_deck
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build .deb package
+        run: |
+          source /opt/ros/humble/setup.bash
+          cargo deb -p rosbag_deck --no-build \
+            --deb-version "${{ steps.version.outputs.version }}"
+
+      - name: Upload .deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-package
+          path: target/debian/*.deb
+
+      - name: Create GitHub Release
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            target/debian/*.deb
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

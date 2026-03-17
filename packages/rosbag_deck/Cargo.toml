@@ -20,3 +20,19 @@ crossterm = { workspace = true, optional = true }
 [features]
 default = ["tui"]
 tui = ["dep:ratatui", "dep:crossterm"]
+
+[package.metadata.deb]
+name = "ros-humble-rosbag-deck"
+maintainer = "Jerry <jerry73204@gmail.com>"
+copyright = "2024-2026 Jerry"
+extended-description = """\
+A fast, interactive ROS 2 bag player written in Rust. \
+Play, inspect, and edit rosbag2 files with tape deck-style controls, \
+a terminal UI, and Python bindings."""
+section = "science"
+priority = "optional"
+depends = "$auto, ros-humble-rosbag2-cpp, ros-humble-rcutils, ros-humble-rclcpp, ros-humble-rcl, ros-humble-rmw-implementation, ros-humble-tracetools, ros-humble-rosbag2-storage-default-plugins"
+assets = [
+    ["target/release/rosbag_deck", "usr/bin/rosbag_deck", "755"],
+    ["../../README.md", "usr/share/doc/ros-humble-rosbag-deck/README.md", "644"],
+]
